@@ -172,6 +172,53 @@ Chr1	RepeatMasker	dispersed_repeat	27895	28006	 7.2	+	.	ID=6;Target "Motif:HELIT
 Chr1	RepeatMasker	dispersed_repeat	28732	28974	 8.7	-	.	ID=7;Target "Motif:Harbinger-N9_OS" 1 231
 Chr1	RepeatMasker	dispersed_repeat	30292	30684	 1.0	-	.	ID=8;Target "Motif:ECR" 1 395
 ```
-### 5. BLAST output (optional)
-If you already have BLAST results, provide them with --blast_result. Otherwise, GeneViz will run BLAST for you using the extracted sequences. The format must be outfmt 6 (tabular) with columns:
-```text
+## ⚙️ Command Line Arguments
+Run python Geneviz.py --help to see all options.
+| Argument | Type | Default | Description |
+|----------|------|---------|-------------|
+| **`--gene1`** | str | **required** | First gene ID |
+| **`--gene2`** | str | **required** | Second gene ID |
+| `--region1` | str | None | Highlighted region on first chromosome (e.g., `Chr1:1000-2000`) |
+| `--region2` | str | None | Highlighted region on second chromosome |
+| | | | |
+| *Single‑species mode* | | | |
+| `--gff` | str | None | GFF file for the genome |
+| `--fasta` | str | None | Genome FASTA file |
+| `--te_gff` | str | None | TE GFF file |
+| | | | |
+| *Cross‑species mode* | | | |
+| `--gff1` | str | None | GFF for species 1 |
+| `--gff2` | str | None | GFF for species 2 |
+| `--fasta1` | str | None | FASTA for species 1 |
+| `--fasta2` | str | None | FASTA for species 2 |
+| `--te_gff1` | str | None | TE GFF for species 1 |
+| `--te_gff2` | str | None | TE GFF for species 2 |
+| | | | |
+| *BLAST options* | | | |
+| `--evalue` | float | 1e-5 | BLAST e‑value threshold |
+| `--threads` | int | 8 | Number of BLAST threads |
+| `--extend` | int | 3000 | Bases to extend around each gene when extracting sequence |
+| `--blast_result` | str | None | Pre‑computed BLAST output (outfmt 6); if not given, BLAST is run automatically |
+| `--auto_complementary` | flag | False | Automatically reverse‑complement the second sequence if most BLAST hits are in opposite direction |
+| | | | |
+| *Plot appearance* | | | |
+| `--svg_width` | int | 2000 | SVG canvas width (pixels) |
+| `--svg_height` | int | 800 | SVG canvas height (pixels) |
+| `--svg_space` | float | 0.2 | Fraction of width used as left/right margins |
+| `--chro_thickness` | int | 15 | Thickness of chromosome rectangles |
+| `--label_font_size` | int | 18 | Font size for scale bar text |
+| `--chro_axis` | flag | False | Draw tick marks on chromosomes |
+| `--no_scale` | flag | False | Omit scale bar |
+| `--gap` | float | 0 | Gap between chromosome and homology polygons |
+| `--pos_label_x_offset` | float | 170 | X‑offset for position labels (chr:start-end) |
+| `--bezier` | flag | False | Use Bezier curves for homology ribbons (smoother) |
+| | | | |
+| *TE track options* | | | |
+| `--te_offset_base` | float | 15 | Base offset for TE motif labels |
+| `--te_offset_step` | float | 15 | Step increment to avoid overlapping TE labels |
+| `--te_track_height` | float | 12 | Height of TE rectangles |
+| `--te_track_offset` | float | 30 | Distance from chromosome to TE track |
+| | | | |
+| *Output* | | | |
+| `--output` | str | GeneViz_result | Prefix for all output files |
+| `--version` | flag | | Show version and exit |
