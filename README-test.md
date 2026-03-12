@@ -271,3 +271,11 @@ All output files are named with the prefix given by `--output` (default: `GeneVi
 | `{prefix}_linkview.pdf` | PDF version (converted from SVG). |
 | `{prefix}_genes.fasta` | Extracted sequences for the two genes (with flanking regions). |
 | `{prefix}_blast.txt` | BLAST results used for plotting (tabular format). |
+## 📝 Citation
+If you use GeneViz in your research, please cite:
+```
+
+```
+## 📄 License
+GeneViz is released under the MIT License. See `LICENSE` for details.
+
