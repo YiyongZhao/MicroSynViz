@@ -126,8 +126,21 @@ genevis --help
 ```
 ## 📁 Input File Formats
 GeneViz requires several input files. All are plain text; please follow the exact formats.
-### 1. Gene pair specification
-The two gene IDs are supplied directly via --gene1 and --gene2. No separate pair file is needed.
+### 1. Gene pair & Region specification
+#### - Gene pair specification:
+The two gene IDs are supplied directly via `--gene1` and `--gene2`. No separate pair file is needed. Use:
+```bash
+--gene1 GeneID-1
+--gene2 GeneID-2
+```
+#### - Region specification：
+To mark a specific sub-region on each chromosome (e.g., a conserved domain), use:
+```bash
+--region1 Chr:start-end #for the first region
+--region2 Chr:start-end #for the second region
+```
+Genes overlapping these intervals will be drawn in red (target color).
+
 ### 2. GFF3 annotation file(s)
 - For single‑species mode: `--gff`
 - For cross‑species mode: `--gff1` and `--gff2`
@@ -145,7 +158,8 @@ The FASTA must be indexed with `samtools faidx` (run `samtools faidx genome.fast
 ### 4. TE GFF file(s) (optional)
 - For single‑species mode: `--te_gff`
 - For cross‑species mode: `--te_gff1` and `--te_gff2`
-If the attribute contains `Target "Motif:xxx"`, the motif name is displayed; otherwise "unknown". Example:
+
+If the attribute contains `Target "Motif:xxx"`, the motif name is displayed; otherwise "unknown". We recommend using the RepeatMasker annotation output file (.out.gff format) as input. Example:
 ```text
 ##gff-version 3
 ##sequence-region Chr1 1 43270923
@@ -158,3 +172,6 @@ Chr1	RepeatMasker	dispersed_repeat	27895	28006	 7.2	+	.	ID=6;Target "Motif:HELIT
 Chr1	RepeatMasker	dispersed_repeat	28732	28974	 8.7	-	.	ID=7;Target "Motif:Harbinger-N9_OS" 1 231
 Chr1	RepeatMasker	dispersed_repeat	30292	30684	 1.0	-	.	ID=8;Target "Motif:ECR" 1 395
 ```
+### 5. BLAST output (optional)
+If you already have BLAST results, provide them with --blast_result. Otherwise, GeneViz will run BLAST for you using the extracted sequences. The format must be outfmt 6 (tabular) with columns:
+```text
