@@ -14,6 +14,7 @@ Features:
 - Gene structure (exons/introns) visualization
 - Core range highlighting
 - SVG and PDF output (vector graphics)
+- Two input modes: gene IDs or genomic regions (with automatic extension)
 
 Dependencies:
     Python 3.6+
@@ -23,17 +24,15 @@ Dependencies:
     samtools (command-line)
     blastn (command-line)
 
-Usage example (single species):
+Usage example (gene mode):
     ./genevis.py --gene1 GeneA --gene2 GeneB \\
         --gff species.gff --fasta genome.fasta --te_gff TEs.gff \\
         --auto_complementary --output my_synteny
 
-Usage example (cross-species):
-    ./genevis.py --gene1 GeneA --gene2 GeneB \\
-        --gff1 species1.gff --fasta1 genome1.fasta \\
-        --gff2 species2.gff --fasta2 genome2.fasta \\
-        --te_gff1 TEs1.gff --te_gff2 TEs2.gff \\
-        --output cross_species
+Usage example (region mode):
+    ./genevis.py --region1 "Chr1:1000-2000" --region2 "Chr2:3000-4000" \\
+        --gff species.gff --fasta genome.fasta --te_gff TEs.gff \\
+        --extend 5000 --output region_synteny
 
 All parameters use long option style (--xxxx).
 """
@@ -49,7 +48,7 @@ from Bio import SeqIO
 from io import StringIO
 import pandas as pd
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"  # Updated version with region mode
 
 # -------------------------- XML escaping for SVG text -------------------------
 def xml_escape(s):
@@ -293,7 +292,7 @@ def extract_gene_coordinates(gene_id, gff_file):
     return chr_id, int(start), int(end), strand
 
 def extract_sequence_samtools(chr_id, start, end, gene_id, genome_fa, extend=3000):
-    """Extract genomic region using samtools faidx."""
+    """Extract genomic region using samtools faidx (gene mode)."""
     check_file_exists(genome_fa)
     region_start = max(1, start - extend)
     region_end = end + extend
@@ -309,6 +308,28 @@ def extract_sequence_samtools(chr_id, start, end, gene_id, genome_fa, extend=300
         sys.stderr.write(f"[ERROR] Empty sequence for {gene_id}\n")
         sys.exit(1)
     fixed_fasta = [f">{gene_id}"] + lines[1:]
+    seq_str = "\n".join(fixed_fasta)
+    return seq_str, region_start, region_end
+
+def extract_region_samtools(chr_id, start, end, genome_fa, extend=0):
+    """Extract genomic region using samtools faidx (region mode)."""
+    check_file_exists(genome_fa)
+    region_start = max(1, start - extend)
+    region_end = end + extend
+    region = f"{chr_id}:{region_start}-{region_end}"
+    cmd = f"samtools faidx {genome_fa} {region}"
+    try:
+        output = subprocess.check_output(cmd, shell=True, encoding="utf-8")
+    except subprocess.CalledProcessError:
+        sys.stderr.write(f"[ERROR] samtools failed to extract region: {region}\n")
+        sys.exit(1)
+    lines = output.strip().split("\n")
+    if len(lines) < 2 or len(lines[1].strip()) == 0:
+        sys.stderr.write(f"[ERROR] Empty sequence for region {region}\n")
+        sys.exit(1)
+    # Use region identifier as FASTA header
+    header = f">{chr_id}:{region_start}-{region_end}"
+    fixed_fasta = [header] + lines[1:]
     seq_str = "\n".join(fixed_fasta)
     return seq_str, region_start, region_end
 
@@ -535,7 +556,7 @@ def generate_svg(gene1, gene2, len1, len2, blast_hits,
                     f'<path d="M{v1[0]},{v1[1]} L{v2[0]},{v2[1]} L{v3[0]},{v3[1]} L{v4[0]},{v4[1]} Z" fill="{fill_color}" opacity="0.6"/>'
                 )
     else:
-        print("[INFO] No relevant BLAST hits found between the two genes.")
+        print("[INFO] No relevant BLAST hits found between the two genes/regions.")
 
     # -------------------------- Draw TE track --------------------------
     if te_info:
@@ -1057,15 +1078,16 @@ def main():
     global args, scale
     parser = argparse.ArgumentParser(
         description="GeneViz: Visualize Pairwise Genomic Microsynteny",
-        epilog="For detailed documentation, see https://github.com/你的用户名/GeneViz"
+        epilog="For detailed documentation, see https://github.com/yourusername/GeneViz"
     )
-    # Required gene identifiers
-    parser.add_argument("--gene1", required=True, help="Gene ID for the first gene")
-    parser.add_argument("--gene2", required=True, help="Gene ID for the second gene")
+    # Two mutually exclusive input modes: gene IDs or genomic regions
+    parser.add_argument("--gene1", help="Gene ID for the first gene (required if --region1 not used)")
+    parser.add_argument("--gene2", help="Gene ID for the second gene (required if --region2 not used)")
+    parser.add_argument("--region1", help="First genomic region (e.g., Chr1:1000-2000); required if --gene1 not used")
+    parser.add_argument("--region2", help="Second genomic region; required if --gene2 not used")
 
     # Region mode (optional, if not provided, uses full extracted region)
-    parser.add_argument("--region1", help="Optional region to highlight on first chromosome (e.g., Chr1:1000-2000)")
-    parser.add_argument("--region2", help="Optional region to highlight on second chromosome")
+    parser.add_argument("--extend", type=int, default=3000, help="Bases to extend around genes/regions (default: 3000)")
 
     # Single species mode
     parser.add_argument("--gff", help="GFF file for single species mode")
@@ -1083,7 +1105,11 @@ def main():
     # BLAST options
     parser.add_argument("--evalue", type=float, default=1e-5, help="BLAST e-value threshold (default: 1e-5)")
     parser.add_argument("--threads", type=int, default=8, help="Number of threads for BLAST (default: 8)")
-    parser.add_argument("--extend", type=int, default=3000, help="Bases to extend around genes (default: 3000)")
+    parser.add_argument("--blast_result", help="Pre-computed BLAST output (outfmt 6); if not given, BLAST is run automatically")
+    parser.add_argument("--auto_complementary", action='store_true',
+                        help='Enable automatic reverse complement based on BLAST alignment direction. '
+                             'When enabled, if most BLAST hits are reverse complementary, the second sequence '
+                             'will be reversed and BLAST will be re-run. Default: off (keep original orientation).')
 
     # SVG appearance
     parser.add_argument('--svg_height', default=800, type=int, help="SVG canvas height (default: 800)")
@@ -1106,23 +1132,29 @@ def main():
     # Output
     parser.add_argument("--output", default="GeneViz_result", help="Output file prefix (default: GeneViz_result)")
 
-    # Auto-complementary feature
-    parser.add_argument('--auto_complementary', action='store_true',
-                        help='Enable automatic reverse complement based on BLAST alignment direction. '
-                             'When enabled, if most BLAST hits are reverse complementary, the second gene '
-                             'will be reversed and BLAST will be re-run. Default: off (keep original orientation).')
-
     # Version
     parser.add_argument('--version', action='version', version=f'GeneViz {__version__}')
 
     args = parser.parse_args()
     scale = 1.0
 
-    # Determine mode: dual species if both fasta1 and fasta2 are provided
+    # Validate input mode
+    gene_mode = args.gene1 is not None and args.gene2 is not None
+    region_mode = args.region1 is not None and args.region2 is not None
+
+    if not gene_mode and not region_mode:
+        sys.stderr.write("[ERROR] You must provide either --gene1 and --gene2, or --region1 and --region2.\n")
+        sys.exit(1)
+
+    if gene_mode and region_mode:
+        sys.stderr.write("[WARNING] Both gene IDs and regions provided. Using gene IDs.\n")
+        # Override: use gene mode
+        region_mode = False
+
+    # Determine single vs dual species mode
     dual_species = (args.fasta1 is not None and args.fasta2 is not None)
 
     if dual_species:
-        # Dual species mode
         if args.fasta is not None or args.gff is not None:
             sys.stderr.write("[WARNING] Both single-species and dual-species arguments provided. Using dual-species mode.\n")
         fasta1 = args.fasta1
@@ -1136,22 +1168,25 @@ def main():
             sys.stderr.write("[ERROR] In dual-species mode, --gff1 and --gff2 are required.\n")
             sys.exit(1)
 
-        # Check file existence
         for f in [fasta1, fasta2, gff1, gff2]:
             check_file_exists(f)
 
-        # Extract gene coordinates from respective GFFs
-        sys.stdout.write("[Step 1/5] Extracting gene coordinates (dual species)...\n")
-        chr1, start1, end1, strand1 = extract_gene_coordinates(args.gene1, gff1)
-        chr2, start2, end2, strand2 = extract_gene_coordinates(args.gene2, gff2)
+        sys.stdout.write("[Step 1/4] Extracting coordinates (dual species)...\n")
+        if gene_mode:
+            chr1, start1, end1, strand1 = extract_gene_coordinates(args.gene1, gff1)
+            chr2, start2, end2, strand2 = extract_gene_coordinates(args.gene2, gff2)
+            seq1, seq1_start, seq1_end = extract_sequence_samtools(chr1, start1, end1, args.gene1, fasta1, args.extend)
+            seq2, seq2_start, seq2_end = extract_sequence_samtools(chr2, start2, end2, args.gene2, fasta2, args.extend)
+        else:  # region mode
+            chr1, start1, end1 = parse_region(args.region1)
+            chr2, start2, end2 = parse_region(args.region2)
+            strand1 = '+'
+            strand2 = '+'
+            seq1, seq1_start, seq1_end = extract_region_samtools(chr1, start1, end1, fasta1, args.extend)
+            seq2, seq2_start, seq2_end = extract_region_samtools(chr2, start2, end2, fasta2, args.extend)
 
-        # Extract sequences
-        sys.stdout.write("[Step 2/5] Retrieving gene sequences...\n")
-        seq1, seq1_start, seq1_end = extract_sequence_samtools(chr1, start1, end1, args.gene1, fasta1, args.extend)
-        seq2, seq2_start, seq2_end = extract_sequence_samtools(chr2, start2, end2, args.gene2, fasta2, args.extend)
-
-        # Parse gene GFFs for structure drawing
-        sys.stdout.write("[Step 4a/5] Parsing gene GFFs...\n")
+        # Parse gene GFFs
+        sys.stdout.write("[Step 2a/4] Parsing gene GFFs...\n")
         try:
             parse_gene_gff(gff1)
             parse_gene_gff(gff2)
@@ -1162,13 +1197,13 @@ def main():
 
         # Parse TE GFFs
         if te_gff1:
-            sys.stdout.write("[Step 4b/5] Parsing TE GFF for species 1...\n")
+            sys.stdout.write("[Step 2b/4] Parsing TE GFF for species 1...\n")
             try:
                 parse_te_gff(te_gff1)
             except Exception as e:
                 sys.stderr.write(f"[WARNING] Failed to parse TE GFF1: {e}\n")
         if te_gff2:
-            sys.stdout.write("[Step 4b/5] Parsing TE GFF for species 2...\n")
+            sys.stdout.write("[Step 2b/4] Parsing TE GFF for species 2...\n")
             try:
                 parse_te_gff(te_gff2)
             except Exception as e:
@@ -1176,10 +1211,9 @@ def main():
         if te_gff1 or te_gff2:
             sys.stdout.write(f"[Info] Total TE entries: {len(te_info)}\n")
         else:
-            sys.stdout.write("[Step 4b/5] No TE GFF provided.\n")
+            sys.stdout.write("[Step 2b/4] No TE GFF provided.\n")
 
-    else:
-        # Single species mode
+    else:  # Single species mode
         if args.fasta is None or args.gff is None:
             sys.stderr.write("[ERROR] In single-species mode, --fasta and --gff are required.\n")
             sys.exit(1)
@@ -1190,15 +1224,21 @@ def main():
         check_file_exists(fasta)
         check_file_exists(gff)
 
-        sys.stdout.write("[Step 1/5] Extracting gene coordinates (single species)...\n")
-        chr1, start1, end1, strand1 = extract_gene_coordinates(args.gene1, gff)
-        chr2, start2, end2, strand2 = extract_gene_coordinates(args.gene2, gff)
+        sys.stdout.write("[Step 1/4] Extracting coordinates (single species)...\n")
+        if gene_mode:
+            chr1, start1, end1, strand1 = extract_gene_coordinates(args.gene1, gff)
+            chr2, start2, end2, strand2 = extract_gene_coordinates(args.gene2, gff)
+            seq1, seq1_start, seq1_end = extract_sequence_samtools(chr1, start1, end1, args.gene1, fasta, args.extend)
+            seq2, seq2_start, seq2_end = extract_sequence_samtools(chr2, start2, end2, args.gene2, fasta, args.extend)
+        else:  # region mode
+            chr1, start1, end1 = parse_region(args.region1)
+            chr2, start2, end2 = parse_region(args.region2)
+            strand1 = '+'
+            strand2 = '+'
+            seq1, seq1_start, seq1_end = extract_region_samtools(chr1, start1, end1, fasta, args.extend)
+            seq2, seq2_start, seq2_end = extract_region_samtools(chr2, start2, end2, fasta, args.extend)
 
-        sys.stdout.write("[Step 2/5] Retrieving gene sequences...\n")
-        seq1, seq1_start, seq1_end = extract_sequence_samtools(chr1, start1, end1, args.gene1, fasta, args.extend)
-        seq2, seq2_start, seq2_end = extract_sequence_samtools(chr2, start2, end2, args.gene2, fasta, args.extend)
-
-        sys.stdout.write("[Step 4a/5] Parsing gene GFF...\n")
+        sys.stdout.write("[Step 2a/4] Parsing gene GFF...\n")
         try:
             parse_gene_gff(gff)
             sys.stdout.write(f"[Info] Found {len(gene_info)} genes in gene GFF.\n")
@@ -1207,7 +1247,7 @@ def main():
             sys.stderr.write("Gene structures will not be drawn.\n")
 
         if te_gff:
-            sys.stdout.write("[Step 4b/5] Parsing TE GFF...\n")
+            sys.stdout.write("[Step 2b/4] Parsing TE GFF...\n")
             try:
                 parse_te_gff(te_gff)
                 sys.stdout.write(f"[Info] Found {len(te_info)} TE elements in TE GFF.\n")
@@ -1215,11 +1255,20 @@ def main():
                 sys.stderr.write(f"[WARNING] Failed to parse TE GFF: {e}\n")
                 sys.stderr.write("TE annotations will not be drawn.\n")
         else:
-            sys.stdout.write("[Step 4b/5] No TE GFF provided.\n")
+            sys.stdout.write("[Step 2b/4] No TE GFF provided.\n")
 
     # Common steps
-    print(f"[DEBUG] gene1: {args.gene1} on {chr1}:{start1}-{end1} strand={strand1}")
-    print(f"[DEBUG] gene2: {args.gene2} on {chr2}:{start2}-{end2} strand={strand2}")
+    if gene_mode:
+        print(f"[DEBUG] gene1: {args.gene1} on {chr1}:{start1}-{end1} strand={strand1}")
+        print(f"[DEBUG] gene2: {args.gene2} on {chr2}:{start2}-{end2} strand={strand2}")
+        gene1_display = args.gene1
+        gene2_display = args.gene2
+    else:
+        print(f"[DEBUG] region1: {chr1}:{start1}-{end1}")
+        print(f"[DEBUG] region2: {chr2}:{start2}-{end2}")
+        # Use region strings as identifiers
+        gene1_display = f"{chr1}:{seq1_start}-{seq1_end}"
+        gene2_display = f"{chr2}:{seq2_start}-{seq2_end}"
 
     revcomp2 = False
     seq_fasta = f"{args.output}_genes.fasta"
@@ -1230,23 +1279,22 @@ def main():
         f.write(seq1 + "\n")
         f.write(seq2 + "\n")
 
-    sys.stdout.write("[Step 3/5] Running initial BLASTn alignment...\n")
+    sys.stdout.write("[Step 3a/4] Running initial BLASTn alignment...\n")
     run_blastn(seq_fasta, blast_out, args.evalue, args.threads)
     blast_hits = parse_blast_results(blast_out)
 
-    # If auto_complementary enabled, decide whether to reverse second gene
+    # If auto_complementary enabled, decide whether to reverse second sequence
     if args.auto_complementary:
         need_revcomp = False
         if blast_hits:
-            # Only consider hits between the two genes
+            # Only consider hits between the two sequences
             relevant_hits = [h for h in blast_hits 
-                             if (h['qseqid'] == args.gene1 and h['sseqid'] == args.gene2) 
-                                or (h['qseqid'] == args.gene2 and h['sseqid'] == args.gene1)]
+                             if (h['qseqid'] == gene1_display and h['sseqid'] == gene2_display) 
+                                or (h['qseqid'] == gene2_display and h['sseqid'] == gene1_display)]
             if relevant_hits:
                 forward = 0
                 reverse = 0
                 for hit in relevant_hits:
-                    # Determine direction: if qstart<qend and sstart<send are equal, same direction
                     qdir = hit['qstart'] < hit['qend']
                     sdir = hit['sstart'] < hit['send']
                     if qdir == sdir:
@@ -1255,16 +1303,16 @@ def main():
                         reverse += 1
                 if reverse > forward:
                     need_revcomp = True
-                    sys.stdout.write("[INFO] BLAST hits indicate reverse complement. Reversing second gene and re-running BLAST.\n")
+                    sys.stdout.write("[INFO] BLAST hits indicate reverse complement. Reversing second sequence and re-running BLAST.\n")
                 else:
                     sys.stdout.write("[INFO] BLAST hits indicate same direction. No reversal needed.\n")
             else:
-                sys.stdout.write("[INFO] No inter-gene BLAST hits found. Skipping direction adjustment.\n")
+                sys.stdout.write("[INFO] No inter-sequence BLAST hits found. Skipping direction adjustment.\n")
         else:
             sys.stdout.write("[INFO] No BLAST hits found. Skipping direction adjustment.\n")
 
         if need_revcomp:
-            # Reverse complement second gene
+            # Reverse complement second sequence
             seq_record = SeqIO.read(StringIO(seq2), "fasta")
             seq_record.seq = seq_record.seq.reverse_complement()
             seq2 = seq_record.format("fasta")
@@ -1277,14 +1325,14 @@ def main():
                 f.write(seq1 + "\n")
                 f.write(seq2 + "\n")
             # Re-run BLAST
-            sys.stdout.write("[Step 3b/5] Re-running BLASTn with reversed sequence...\n")
+            sys.stdout.write("[Step 3b/4] Re-running BLASTn with reversed sequence...\n")
             run_blastn(seq_fasta, blast_out, args.evalue, args.threads)
             blast_hits = parse_blast_results(blast_out)   # update
     else:
         sys.stdout.write("[INFO] --auto_complementary not specified: keeping original orientation, skipping direction adjustment.\n")
 
-    # Determine target genes and core ranges if regions are provided
-    if args.region1 and args.region2:
+    # Determine target genes and core ranges if regions are provided (only relevant in region mode)
+    if region_mode and args.region1 and args.region2:
         target_genes = set()
         chr1_lower = chr1.lower()
         chr2_lower = chr2.lower()
@@ -1305,12 +1353,12 @@ def main():
         core_ranges = None
 
     seq_lengths = read_sequence_lengths(seq_fasta)
-    len1 = seq_lengths[args.gene1]
-    len2 = seq_lengths[args.gene2]
+    len1 = seq_lengths[gene1_display]
+    len2 = seq_lengths[gene2_display]
 
-    sys.stdout.write("[Step 5/5] Generating SVG plot...\n")
+    sys.stdout.write("[Step 4/4] Generating SVG plot...\n")
     svg_file = generate_svg(
-        gene1=args.gene1, gene2=args.gene2,
+        gene1=gene1_display, gene2=gene2_display,
         len1=len1, len2=len2,
         blast_hits=blast_hits,
         seq1_start=seq1_start, seq1_end=seq1_end,
