@@ -127,3 +127,7 @@ genevis --help
 ## 📁 Input File Formats
 GeneViz requires several input files. All are plain text; please follow the exact formats.
 ### 1. Gene pair specification
+The two gene IDs are supplied directly via --gene1 and --gene2. No separate pair file is needed.
+### 2. GFF3 annotation file(s)
+- For single‑species mode: `--gff`
+- For cross‑species mode: `--gff1` and `--gff2`
