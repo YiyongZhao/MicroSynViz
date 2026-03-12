@@ -87,3 +87,6 @@ All you need are GFF annotation files, a genome FASTA, and BLAST output (optiona
 Install Python dependencies with:
 ```bash
 pip install biopython pandas cairosvg
+Install external tools via conda (recommended):
+```bash
+conda install -c bioconda samtools blast
