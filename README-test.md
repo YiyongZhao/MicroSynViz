@@ -92,3 +92,15 @@ Install external tools via conda (recommended):
 ```bash
 conda install -c bioconda samtools blast
 ```
+or via your system package manager (e.g., apt-get install samtools ncbi-blast+ on Ubuntu).
+## 🛠 Installation
+Option 1: Direct script usage (simplest)
+1.Download the genevis.py script from the GitHub repository.
+2.Install Python dependencies: pip install biopython pandas cairosvg.
+3.Ensure samtools and blastn are installed and accessible.
+4.Run the script with:
+```bash
+python Geneviz.py --help
+```
+
+Option 2: Install via pip (from GitHub)
