@@ -1,0 +1,4 @@
+SpeciesA_Chr1	RepeatMasker	dispersed_repeat	-1566	6990	 3.3	+	.	ID=4602;Target "Motif:COPIO_I" 1 8660
+SpeciesA_Chr1	RepeatMasker	dispersed_repeat	6966	6994	 3.5	+	.	ID=4602;Target "Motif:COPIO_I" 8823 8851
+SpeciesA_Chr1	RepeatMasker	dispersed_repeat	6995	8498	 7.4	+	.	ID=4602;Target "Motif:COPIO_LTR" 1 1515
+SpeciesA_Chr1	RepeatMasker	dispersed_repeat	8499	8538	 7.5	+	.	ID=4603;Target "Motif:Harbinger-N29B_OS" 138 177

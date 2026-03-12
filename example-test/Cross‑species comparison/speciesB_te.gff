@@ -1,0 +1,6 @@
+SpeciesB_Chr7	RepeatMasker	dispersed_repeat	1450	1579	 9.3	+	.	ID=50071;Target "Motif:Harbinger-N5_OS" 202 343
+SpeciesB_Chr7	RepeatMasker	dispersed_repeat	2478	2999	 8.1	+	.	ID=50072;Target "Motif:COPIA1-LTR_OS" 1 525
+SpeciesB_Chr7	RepeatMasker	dispersed_repeat	3000	4518	 7.2	-	.	ID=50073;Target "Motif:COPIO_LTR" 1 1515
+SpeciesB_Chr7	RepeatMasker	dispersed_repeat	4523	13170	 3.6	-	.	ID=50073;Target "Motif:COPIO_I" 1 8660
+SpeciesB_Chr7	RepeatMasker	dispersed_repeat	13171	13453	 5.0	-	.	ID=50073;Target "Motif:COPIO_LTR" 1232 1515
+SpeciesB_Chr7	RepeatMasker	dispersed_repeat	17464	17699	 4.3	-	.	ID=50074;Target "Motif:TREP215" 1 235
