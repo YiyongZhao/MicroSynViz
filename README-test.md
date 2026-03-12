@@ -222,3 +222,25 @@ Run python Geneviz.py --help to see all options.
 | *Output* | | | |
 | `--output` | str | GeneViz_result | Prefix for all output files |
 | `--version` | flag | | Show version and exit |
+## 🚀 Usage Examples
+### Single‑species comparison
+Compare two genes in the same genome, with TE annotations, and let GeneViz run BLAST automatically:
+```bash
+python Geneviz.py \
+    --gene1 GeneA --gene2 GeneB \
+    --gff species.gff \
+    --fasta genome.fasta \
+    --te_gff TEs.gff \
+    --auto_complementary \
+    --output my_synteny
+```
+Compare two region in the same genome, with TE annotations, and let GeneViz run BLAST automatically:
+```bash
+python Geneviz.py \
+    --region1 Chr1:1000-5000 --Chr2 2000-6000 \
+    --gff species.gff \
+    --fasta genome.fasta \
+    --te_gff TEs.gff \
+    --auto_complementary \
+    --output my_synteny
+```
