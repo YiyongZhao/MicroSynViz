@@ -263,3 +263,11 @@ python genevis.py \
     --te_gff1 TEs1.gff --te_gff2 TEs2.gff \
     --output cross_species
 ```
+## 📤 Output Files
+All output files are named with the prefix given by `--output` (default: `GeneViz_result`).
+| File | Description |
+|------|-------------|
+| `{prefix}_linkview.svg` | Vector graphic (SVG) of the synteny plot. |
+| `{prefix}_linkview.pdf` | PDF version (converted from SVG). |
+| `{prefix}_genes.fasta` | Extracted sequences for the two genes (with flanking regions). |
+| `{prefix}_blast.txt` | BLAST results used for plotting (tabular format). |
