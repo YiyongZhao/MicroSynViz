@@ -104,9 +104,25 @@ style_css = {
 }
 
 # -------------------------- Custom Exceptions -------------------------
-class FormatError(Exception):
+class MicroSynVizError(Exception):
+    """Base exception for MicroSynViz."""
+    pass
+
+class FormatError(MicroSynVizError):
     def __init__(self, fmt_type, filename, line=""):
         super().__init__(f"Invalid {fmt_type} format in {filename}: {line[:100]}")
+
+class InputError(MicroSynVizError):
+    """Missing or invalid input files/parameters."""
+    pass
+
+class ExternalToolError(MicroSynVizError):
+    """External tool (samtools, blastn) not found or failed."""
+    pass
+
+class GeneNotFoundError(MicroSynVizError):
+    """Gene ID not found in any annotation file."""
+    pass
 
 # -------------------------- Chromosome/Drawing Helper Class -------------------------
 class Chro():
@@ -450,10 +466,9 @@ def extract_gene_from_bed(gene_id, bed_file):
 
 # -------------------------- Utility Functions -------------------------
 def check_file_exists(file_path):
-    """Exit with error if file does not exist."""
+    """Raise InputError if file does not exist."""
     if not os.path.isfile(file_path):
-        sys.stderr.write(f"[ERROR] File not found: {file_path}\n")
-        sys.exit(1)
+        raise InputError(f"File not found: {file_path}")
 
 def _find_gene_in_annos(gene_id, anno_files):
     """Search multiple annotation files for a gene. Returns (chr, start, end, strand) or None."""
@@ -491,8 +506,7 @@ def extract_gene_coordinates(gene_id, anno_file):
         result = extract_gene_from_bed(gene_id, anno_file)
         if result:
             return result
-        sys.stderr.write(f"[ERROR] Gene {gene_id} not found in BED file {anno_file}\n")
-        sys.exit(1)
+        raise GeneNotFoundError(f"Gene '{gene_id}' not found in BED file {anno_file}")
     # GFF/GTF
     with open(anno_file, 'r') as f:
         for line in f:
@@ -510,8 +524,7 @@ def extract_gene_coordinates(gene_id, anno_file):
                      att.get('gene_name') == gene_id)
             if match:
                 return parts[0], int(parts[3]), int(parts[4]), parts[6]
-    sys.stderr.write(f"[ERROR] Gene {gene_id} not found in {anno_file}\n")
-    sys.exit(1)
+    raise GeneNotFoundError(f"Gene '{gene_id}' not found in {anno_file}")
 
 def extract_sequence_samtools(chr_id, start, end, gene_id, genome_fa, extend=3000):
     """Extract genomic region using samtools faidx (gene mode)."""
@@ -523,15 +536,12 @@ def extract_sequence_samtools(chr_id, start, end, gene_id, genome_fa, extend=300
     try:
         output = subprocess.check_output(cmd, encoding="utf-8")
     except subprocess.CalledProcessError:
-        sys.stderr.write(f"[ERROR] samtools failed to extract region: {region}\n")
-        sys.exit(1)
+        raise ExternalToolError(f"samtools failed to extract region: {region}")
     except FileNotFoundError:
-        sys.stderr.write("[ERROR] samtools not found in PATH.\n")
-        sys.exit(1)
+        raise ExternalToolError("samtools not found in PATH. Install: conda install -c bioconda samtools")
     lines = output.strip().split("\n")
     if len(lines) < 2 or len(lines[1].strip()) == 0:
-        sys.stderr.write(f"[ERROR] Empty sequence for {gene_id}\n")
-        sys.exit(1)
+        raise InputError(f"Empty sequence extracted for {gene_id}")
     fixed_fasta = [f">{gene_id}"] + lines[1:]
     seq_str = "\n".join(fixed_fasta)
     # Adjust region_end based on actual extracted sequence length
@@ -551,15 +561,12 @@ def extract_region_samtools(chr_id, start, end, genome_fa, extend=0):
     try:
         output = subprocess.check_output(cmd, encoding="utf-8")
     except subprocess.CalledProcessError:
-        sys.stderr.write(f"[ERROR] samtools failed to extract region: {region}\n")
-        sys.exit(1)
+        raise ExternalToolError(f"samtools failed to extract region: {region}")
     except FileNotFoundError:
-        sys.stderr.write("[ERROR] samtools not found in PATH.\n")
-        sys.exit(1)
+        raise ExternalToolError("samtools not found in PATH. Install: conda install -c bioconda samtools")
     lines = output.strip().split("\n")
     if len(lines) < 2 or len(lines[1].strip()) == 0:
-        sys.stderr.write(f"[ERROR] Empty sequence for region {region}\n")
-        sys.exit(1)
+        raise InputError(f"Empty sequence extracted for region {region}")
     # Adjust region_end based on actual extracted sequence length
     actual_len = sum(len(l.strip()) for l in lines[1:])
     actual_end = region_start + actual_len - 1
@@ -581,8 +588,7 @@ def run_blastn(seq_fasta, blast_out, evalue=1e-5, threads=8):
         subprocess.run(makeblastdb_cmd, check=True,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        sys.stderr.write(f"[ERROR] Failed to build BLAST database: {e}\n")
-        sys.exit(1)
+        raise ExternalToolError(f"Failed to build BLAST database: {e}")
     blast_cmd = ["blastn", "-query", seq_fasta, "-db", tmp_db,
                  "-evalue", str(evalue), "-out", blast_out,
                  "-outfmt", "6", "-num_threads", str(threads)]
@@ -590,8 +596,7 @@ def run_blastn(seq_fasta, blast_out, evalue=1e-5, threads=8):
         subprocess.run(blast_cmd, check=True,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        sys.stderr.write(f"[ERROR] BLASTn alignment failed: {e}\n")
-        sys.exit(1)
+        raise ExternalToolError(f"BLASTn alignment failed: {e}")
     finally:
         # Cleanup temporary database directory
         shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -1435,16 +1440,14 @@ def main():
     # Check external dependencies
     for tool in ['samtools', 'blastn', 'makeblastdb']:
         if not shutil.which(tool):
-            sys.stderr.write(f"[ERROR] '{tool}' not found in PATH. Install via: conda install -c bioconda samtools blast\n")
-            sys.exit(1)
+            raise ExternalToolError(f"'{tool}' not found in PATH. Install via: conda install -c bioconda samtools blast")
 
     # Validate input mode
     gene_mode = args.gene1 is not None and args.gene2 is not None
     region_mode = args.region1 is not None and args.region2 is not None
 
     if not gene_mode and not region_mode:
-        sys.stderr.write("[ERROR] You must provide either --gene1 and --gene2, or --region1 and --region2.\n")
-        sys.exit(1)
+        raise InputError("You must provide either --gene1 and --gene2, or --region1 and --region2.")
 
     if gene_mode and region_mode:
         sys.stderr.write("[WARNING] Both gene IDs and regions provided. Using gene IDs.\n")
@@ -1506,11 +1509,9 @@ def main():
 
     # Validate
     if not fasta1 or not fasta2:
-        sys.stderr.write("[ERROR] Genome FASTA required. Use --g1/--g2 (or legacy --genome/-g).\n")
-        sys.exit(1)
+        raise InputError("Genome FASTA required. Use --g1/--g2 (or legacy --genome/-g).")
     if not annos1 or not annos2:
-        sys.stderr.write("[ERROR] Annotation files required. Use --annos1/--annos2 (or legacy --gff).\n")
-        sys.exit(1)
+        raise InputError("Annotation files required. Use --annos1/--annos2 (or legacy --gff).")
 
     check_file_exists(fasta1)
     check_file_exists(fasta2)
@@ -1520,22 +1521,20 @@ def main():
     dual_species = (fasta1 != fasta2)
     mode_label = "cross-species" if dual_species else "single-species"
 
-    sys.stdout.write(f"[Step 1/4] Extracting coordinates ({mode_label})...\n")
-    sys.stdout.write(f"  Region 1: genome={fasta1}, annotations={annos1}\n")
-    sys.stdout.write(f"  Region 2: genome={fasta2}, annotations={annos2}\n")
+    log(f"[Step 1/4] Extracting coordinates ({mode_label})...\n")
+    log(f"  Region 1: genome={fasta1}, annotations={annos1}\n")
+    log(f"  Region 2: genome={fasta2}, annotations={annos2}\n")
 
     if gene_mode:
         # Search all annotation files for gene coordinates (not just the first one)
         result1 = _find_gene_in_annos(args.gene1, annos1)
         if not result1:
-            sys.stderr.write(f"[ERROR] Gene '{args.gene1}' not found in annotation files: {annos1}\n")
-            sys.exit(1)
+            raise GeneNotFoundError(f"Gene '{args.gene1}' not found in annotation files: {annos1}")
         chr1, start1, end1, strand1 = result1
 
         result2 = _find_gene_in_annos(args.gene2, annos2)
         if not result2:
-            sys.stderr.write(f"[ERROR] Gene '{args.gene2}' not found in annotation files: {annos2}\n")
-            sys.exit(1)
+            raise GeneNotFoundError(f"Gene '{args.gene2}' not found in annotation files: {annos2}")
         chr2, start2, end2, strand2 = result2
 
         seq1, seq1_start, seq1_end = extract_sequence_samtools(chr1, start1, end1, args.gene1, fasta1, args.extend)
@@ -1549,11 +1548,11 @@ def main():
         seq2, seq2_start, seq2_end = extract_region_samtools(chr2, start2, end2, fasta2, args.extend)
 
     # Parse ALL annotation files (auto-detect GFF3/GTF/BED)
-    sys.stdout.write("[Step 2/4] Parsing annotations...\n")
+    log("[Step 2/4] Parsing annotations...\n")
     all_annos = list(dict.fromkeys(annos1 + annos2))  # deduplicate, preserve order
     for anno_path in all_annos:
         parse_annotation(anno_path)
-    sys.stdout.write(f"  Found {len(gene_info)} genes, {len(te_info)} TE entries.\n")
+    log(f"  Found {len(gene_info)} genes, {len(te_info)} TE entries.\n")
 
     # Common steps
     if gene_mode:
@@ -1581,9 +1580,9 @@ def main():
         # Use pre-computed BLAST result (must be outfmt 6)
         check_file_exists(args.blast_result)
         blast_out = args.blast_result
-        sys.stdout.write(f"[Step 3a/4] Using pre-computed BLAST result: {blast_out}\n")
+        log(f"[Step 3a/4] Using pre-computed BLAST result: {blast_out}\n")
     else:
-        sys.stdout.write("[Step 3a/4] Running initial BLASTn alignment...\n")
+        log("[Step 3a/4] Running initial BLASTn alignment...\n")
         run_blastn(seq_fasta, blast_out, args.evalue, args.threads)
     blast_hits = parse_blast_results(blast_out, min_identity=args.identity, min_length=args.alignment_length)
 
@@ -1607,13 +1606,13 @@ def main():
                         reverse += 1
                 if reverse > forward:
                     need_revcomp = True
-                    sys.stdout.write("[INFO] BLAST hits indicate reverse complement. Reversing second sequence and re-running BLAST.\n")
+                    log("[INFO] BLAST hits indicate reverse complement. Reversing second sequence and re-running BLAST.\n")
                 else:
-                    sys.stdout.write("[INFO] BLAST hits indicate same direction. No reversal needed.\n")
+                    log("[INFO] BLAST hits indicate same direction. No reversal needed.\n")
             else:
-                sys.stdout.write("[INFO] No inter-sequence BLAST hits found. Skipping direction adjustment.\n")
+                log("[INFO] No inter-sequence BLAST hits found. Skipping direction adjustment.\n")
         else:
-            sys.stdout.write("[INFO] No BLAST hits found. Skipping direction adjustment.\n")
+            log("[INFO] No BLAST hits found. Skipping direction adjustment.\n")
 
         if need_revcomp:
             # Reverse complement second sequence
@@ -1628,11 +1627,11 @@ def main():
                 f.write(seq1 + "\n")
                 f.write(seq2 + "\n")
             # Re-run BLAST
-            sys.stdout.write("[Step 3b/4] Re-running BLASTn with reversed sequence...\n")
+            log("[Step 3b/4] Re-running BLASTn with reversed sequence...\n")
             run_blastn(seq_fasta, blast_out, args.evalue, args.threads)
             blast_hits = parse_blast_results(blast_out, min_identity=args.identity, min_length=args.alignment_length)   # update
     else:
-        sys.stdout.write("[INFO] --auto_complementary not specified: keeping original orientation, skipping direction adjustment.\n")
+        log("[INFO] --auto_complementary not specified: keeping original orientation, skipping direction adjustment.\n")
 
     # Determine target genes and core ranges if regions are provided (only relevant in region mode)
     if region_mode and args.region1 and args.region2:
@@ -1649,7 +1648,7 @@ def main():
                 g_start, g_end = ginfo.get('gene', (0,0))
                 if g_start <= end2 and g_end >= start2:
                     target_genes.add(gid)
-        sys.stdout.write(f"[Info] {len(target_genes)} genes found overlapping the specified regions and will be highlighted in red.\n")
+        log(f"[Info] {len(target_genes)} genes found overlapping the specified regions and will be highlighted in red.\n")
         core_ranges = {chr1: (start1, end1), chr2: (start2, end2)}
     else:
         target_genes = None
@@ -1659,7 +1658,7 @@ def main():
     len1 = seq_lengths[gene1_display]
     len2 = seq_lengths[gene2_display]
 
-    sys.stdout.write("[Step 4/4] Generating SVG plot...\n")
+    log("[Step 4/4] Generating SVG plot...\n")
     svg_file = generate_svg(
         gene1=gene1_display, gene2=gene2_display,
         len1=len1, len2=len2,
@@ -1678,15 +1677,25 @@ def main():
     pdf_file = svg_file.replace('.svg', '.pdf')
     try:
         cairosvg.svg2pdf(url=svg_file, write_to=pdf_file)
-        sys.stdout.write(f"[INFO] PDF generated: {pdf_file}\n")
+        log(f"[INFO] PDF generated: {pdf_file}\n")
     except Exception as e:
         sys.stderr.write(f"[WARNING] Failed to convert SVG to PDF: {e}\n")
 
-    sys.stdout.write("\n[✅ Analysis Completed Successfully]\n")
-    sys.stdout.write(f"1. Gene sequences: {seq_fasta}\n")
-    sys.stdout.write(f"2. BLAST results: {blast_out}\n")
-    sys.stdout.write(f"3. Output SVG: {svg_file}\n")
-    sys.stdout.write(f"4. Output PDF: {pdf_file}\n")
+    log("\n[✅ Analysis Completed Successfully]\n")
+    log(f"1. Gene sequences: {seq_fasta}\n")
+    log(f"2. BLAST results: {blast_out}\n")
+    log(f"3. Output SVG: {svg_file}\n")
+    log(f"4. Output PDF: {pdf_file}\n")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except MicroSynVizError as e:
+        sys.stderr.write(f"[ERROR] {e}\n")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        sys.stderr.write("\n[Interrupted]\n")
+        sys.exit(130)
+    except Exception as e:
+        sys.stderr.write(f"[FATAL] Unexpected error: {e}\n")
+        sys.exit(2)
