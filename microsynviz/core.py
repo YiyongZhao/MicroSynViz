@@ -36,11 +36,18 @@ Usage example (gene mode, cross species):
         --fa2 species2.fa --annos2 sp2_genes.gff sp2_TEs.gff \\
         --auto_complementary --output cross_synteny
 
-Usage example (region mode):
+Usage example (region mode, genome FASTA):
     MicroSynViz --region1 "Chr1:1000-2000" --region2 "Chr2:3000-4000" \\
         --fa1 genome.fa --annos1 genes.gff \\
         --fa2 genome.fa --annos2 genes.gff \\
         --extend 5000 --output region_synteny
+
+Usage example (CDS FASTA, no annotations needed):
+    MicroSynViz --gene1 GENE_A --gene2 GENE_B \\
+        --fa1 cds.fa --fa2 cds.fa --extend 0 --output cds_compare
+
+    MicroSynViz --region1 "LOC01:1-1000" --region2 "LOC02:1-1500" \\
+        --fa1 cds.fa --fa2 cds.fa --extend 0 --output cds_region
 
 All parameters use long option style (--xxxx).
 """
@@ -1406,8 +1413,10 @@ def main():
     # Target: gene IDs or genomic regions
     parser.add_argument("--gene1", help="Gene ID for region 1 (required if --region1 not used)")
     parser.add_argument("--gene2", help="Gene ID for region 2 (required if --region2 not used)")
-    parser.add_argument("--region1", help="Genomic region 1 (e.g., Chr1:1000-2000)")
-    parser.add_argument("--region2", help="Genomic region 2 (e.g., Chr2:3000-8000)")
+    parser.add_argument("--region1", help="Region 1 in SeqID:start-end format. "
+                        "For genome FASTA: Chr1:1000-5000; for CDS FASTA: LOC_Os06g50440:1-1000")
+    parser.add_argument("--region2", help="Region 2 in SeqID:start-end format. "
+                        "For genome FASTA: Chr2:3000-8000; for CDS FASTA: AT1G01010:1-2000")
     parser.add_argument("--extend", type=int, default=3000, help="Bases to extend around genes/regions (default: 3000)")
 
     # Per-region input files

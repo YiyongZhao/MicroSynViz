@@ -57,7 +57,8 @@ Unlike genome-wide synteny tools (MCScanX, SynVisio, JupiterPlot), MicroSynViz f
 
 - **Per-region input**: each region gets its own genome + annotations — no mode switching
 - **Format-agnostic**: auto-detects GFF3, GTF, and BED — mix freely in annotation inputs
-- **Two input modes**: gene IDs (`--gene1/--gene2`) or genomic regions (`--region1/--region2`)
+- **Two input modes**: gene IDs (`--gene1/--gene2`) or regions (`--region1/--region2` in `SeqID:start-end` format)
+- **Flexible FASTA input**: genome FASTA (chromosome-level) or CDS/transcript FASTA (gene-level) — annotations optional for CDS mode
 - **Automatic reverse complement** detection based on BLAST alignment orientation
 - **Flexible ribbon coloring**: color by bitscore, identity, or e-value (`--color_by`)
 - **BLAST filtering**: minimum identity and alignment length thresholds
@@ -205,7 +206,7 @@ MicroSynViz \
     --output cross_species
 ```
 
-### Region mode
+### Region mode (genome FASTA)
 
 ```bash
 MicroSynViz \
@@ -215,6 +216,17 @@ MicroSynViz \
     --fa2 genome.fa --annos2 annotation.gff \
     --extend 5000 \
     --output region_synteny
+```
+
+### Region mode (CDS/transcript FASTA)
+
+```bash
+MicroSynViz \
+    --region1 LOC_Os06g50440:1-1000 \
+    --region2 LOC_Os06g50789:1-1500 \
+    --fa1 cds.fa --fa2 cds.fa \
+    --extend 0 \
+    --output cds_comparison
 ```
 
 > **Design principle**: each region is self-contained with `--fa1/--annos1` and `--fa2/--annos2`. For single-species, simply provide the same files for both. GFF files are auto-parsed for both gene structure and TE features.
@@ -231,8 +243,8 @@ Run `MicroSynViz --help` to see all options.
 |-----------|------|-------------|
 | `--gene1` | str | Gene ID for region 1 |
 | `--gene2` | str | Gene ID for region 2 |
-| `--region1` | str | Genomic region 1 (Chr:start-end) |
-| `--region2` | str | Genomic region 2 (Chr:start-end) |
+| `--region1` | str | Region 1 in `SeqID:start-end` format. Genome: `Chr1:1000-5000`; CDS: `GeneID:1-1000` |
+| `--region2` | str | Region 2 in `SeqID:start-end` format. Genome: `Chr2:3000-8000`; CDS: `GeneID:1-2000` |
 | `--fa1` | FASTA | FASTA file for region 1 (genome or CDS/transcript) |
 | `--fa2` | FASTA | FASTA file for region 2 (genome or CDS/transcript) |
 | `--annos1` | FILE+ | Annotation file(s) for region 1 (gene, TE, etc.) |
