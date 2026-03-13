@@ -57,6 +57,9 @@ from io import StringIO
 import pandas as pd
 import shutil
 import tempfile
+import logging
+
+logger = logging.getLogger("MicroSynViz")
 
 __version__ = "1.0.0"  # Updated version with region mode
 
@@ -213,7 +216,7 @@ def parse_gene_gff(gff_file):
     mRNA_type_name_set = {'mRNA', 'mrna', 'MRNA', 'transcript'}
     exon_type_name_set = {'exon', 'EXON', 'CDS', 'cds'}
 
-    print(f"[INFO] Parsing gene GFF: {gff_file}")
+    logger.info(f" Parsing gene GFF: {gff_file}")
     sample_count = 0
     with open(gff_file, 'r') as GFF:
         for line in GFF:
@@ -238,7 +241,7 @@ def parse_gene_gff(gff_file):
                 gene_info[gene_id]['strand'] = strand
                 gene_info[gene_id]['gene'] = (start, end)
                 if sample_count < 5:
-                    print(f"[SAMPLE] Gene: {gene_id} at {seqid}:{start}-{end} strand={strand}")
+                    logger.debug(f" Gene: {gene_id} at {seqid}:{start}-{end} strand={strand}")
                     sample_count += 1
             elif feat in mRNA_type_name_set:
                 if 'Parent' not in att:
@@ -279,7 +282,7 @@ def parse_te_gff(te_gff_file):
     id_pattern = re.compile(r'ID=([^;]+)')
     motif_pattern = re.compile(r'Target\s+"Motif:([^"\s]+)')
 
-    print(f"[INFO] Parsing TE file: {te_gff_file}")
+    logger.info(f" Parsing TE file: {te_gff_file}")
     sample_count = 0
     te_count = 0
     with open(te_gff_file, 'r') as GFF:
@@ -309,9 +312,9 @@ def parse_te_gff(te_gff_file):
             te_info.append((file_id, seqid, start, end, motif_name, strand))
             te_count += 1
             if sample_count < 5:
-                print(f"[SAMPLE] TE {file_id}: {seqid}:{start}-{end} motif={motif_name} strand={strand}")
+                logger.debug(f" TE {file_id}: {seqid}:{start}-{end} motif={motif_name} strand={strand}")
                 sample_count += 1
-    print(f"[INFO] TE parsing complete. TE entries stored: {len(te_info)}")
+    logger.info(f" TE parsing complete. TE entries stored: {len(te_info)}")
 
 
 
@@ -352,7 +355,7 @@ def parse_bed_genes(bed_file):
     BED6 or BED3: treated as single-exon genes.
     """
     global gene_info, mRNA_info
-    print(f"[INFO] Parsing BED (gene mode): {bed_file}")
+    logger.info(f" Parsing BED (gene mode): {bed_file}")
     count = 0
     with open(bed_file, 'r') as f:
         for line in f:
@@ -399,13 +402,13 @@ def parse_bed_genes(bed_file):
                 gene_info[name].setdefault('mRNA', {})
                 gene_info[name]['mRNA'][mrna_id] = mRNA_info[mrna_id]
             count += 1
-    print(f"[INFO] BED gene parsing complete: {count} entries")
+    logger.info(f" BED gene parsing complete: {count} entries")
 
 
 def parse_bed_te(bed_file):
     """Parse BED file for TE annotations."""
     global te_info
-    print(f"[INFO] Parsing BED (TE mode): {bed_file}")
+    logger.info(f" Parsing BED (TE mode): {bed_file}")
     count = 0
     with open(bed_file, 'r') as f:
         for line in f:
@@ -425,13 +428,13 @@ def parse_bed_te(bed_file):
             file_id = f"{chrom}_{start}_{end}"
             te_info.append((file_id, chrom, start, end, name, strand))
             count += 1
-    print(f"[INFO] BED TE parsing complete: {count} entries")
+    logger.info(f" BED TE parsing complete: {count} entries")
 
 
 def parse_annotation(filepath):
     """Universal annotation parser: auto-detect format and parse for both gene and TE features."""
     fmt = detect_format(filepath)
-    sys.stdout.write(f"  {filepath} [detected: {fmt.upper()}]\n")
+    logger.info(f"  {filepath} [detected: {fmt.upper()}]\n")
     if fmt == 'bed':
         parse_bed_genes(filepath)
         parse_bed_te(filepath)
@@ -629,7 +632,7 @@ def parse_blast_results(blast_file, min_identity=0, min_length=0):
             df = df[df["length"] >= min_length]
         n_kept = len(df)
         if n_total > 0:
-            sys.stdout.write(f"[MicroSynViz] BLAST hits: {n_total} total, {n_kept} passed filters "
+            logger.info(f"BLAST hits: {n_total} total, {n_kept} passed filters "
                            f"(identity >= {min_identity}%, length >= {min_length} bp)\n")
         blast_hits = df.to_dict("records")
     return blast_hits
@@ -825,11 +828,11 @@ def generate_svg(gene1, gene2, len1, len2, blast_hits,
                     f'<path d="M{v1[0]},{v1[1]} L{v2[0]},{v2[1]} L{v3[0]},{v3[1]} L{v4[0]},{v4[1]} Z" fill="{fill_color}" opacity="0.6"/>'
                 )
     else:
-        print("[INFO] No relevant BLAST hits found between the two genes/regions.")
+        logger.info(" No relevant BLAST hits found between the two genes/regions.")
 
     # -------------------------- Draw TE track --------------------------
     if te_info:
-        print(f"[INFO] Starting TE track drawing for {gene1} and {gene2}")
+        logger.info(f" Starting TE track drawing for {gene1} and {gene2}")
         debug_level = int(os.environ.get('DEBUG_TE', '0'))
 
         def draw_te_track(gene_id, chromosome, chro_obj, position, revcomp):
@@ -883,7 +886,7 @@ def generate_svg(gene1, gene2, len1, len2, blast_hits,
 
                 te_candidates.append((x1, x2, motif_name, actual_strand))
                 if debug_level >= 1:
-                    print(f"[DEBUG] TE {file_id}: original ({te_start},{te_end}) mapped to ({mapped_start},{mapped_end}) -> draw ({draw_start},{draw_end}) strand={actual_strand}")
+                    logger.debug(f" TE {file_id}: original ({te_start},{te_end}) mapped to ({mapped_start},{mapped_end}) -> draw ({draw_start},{draw_end}) strand={actual_strand}")
 
             # Sort and layout to avoid overlaps
             te_candidates.sort(key=lambda t: t[0])
@@ -968,13 +971,13 @@ def generate_svg(gene1, gene2, len1, len2, blast_hits,
                     f'text-anchor="middle">{escaped_motif}</text>'
                 )
 
-            print(f"[INFO] TE track for {gene_id}: matched chromosome count = {matched_chr_count}, {len(te_candidates)} TE(s) drawn.")
+            logger.info(f" TE track for {gene_id}: matched chromosome count = {matched_chr_count}, {len(te_candidates)} TE(s) drawn.")
             return ''.join(te_svg)
 
         svg_content_parts.append(draw_te_track(gene1, chr1, chro1, 'top', revcomp=False))
         svg_content_parts.append(draw_te_track(gene2, chr2, chro2, 'bottom', revcomp2))
     else:
-        print("[INFO] te_info is empty, skipping TE drawing.")
+        logger.info(" te_info is empty, skipping TE drawing.")
 
     # -------------------------- Draw all gene structures --------------------------
     if gene_info:
@@ -988,18 +991,18 @@ def generate_svg(gene1, gene2, len1, len2, blast_hits,
             # Debug info
             if not hasattr(draw_all_gene_structures, "chromosomes_printed"):
                 all_chromosomes = set(ginfo['chro'].lower() for ginfo in gene_info.values() if 'chro' in ginfo)
-                print(f"[DEBUG] All chromosome names in gene_info (lowercase): {sorted(all_chromosomes)}")
+                logger.debug(f" All chromosome names in gene_info (lowercase): {sorted(all_chromosomes)}")
                 draw_all_gene_structures.chromosomes_printed = True
 
             genes_on_chr = [gid for gid, ginfo in gene_info.items() if ginfo['chro'].lower() == chromosome_lower]
-            print(f"[DEBUG] Genes on {chromosome} (lower={chromosome_lower}): {genes_on_chr}")
+            logger.debug(f" Genes on {chromosome} (lower={chromosome_lower}): {genes_on_chr}")
 
             # Adjust core range if reversed
             if revcomp and core_start is not None and core_end is not None:
                 core_start, core_end = chro_start + chro_end - core_end, chro_start + chro_end - core_start
                 if core_start > core_end:
                     core_start, core_end = core_end, core_start
-                print(f"[DEBUG] Mapped core range for revcomp: ({core_start}, {core_end})")
+                logger.debug(f" Mapped core range for revcomp: ({core_start}, {core_end})")
 
             COLOR_TARGET = "#FF0000"
             COLOR_OTHER  = "#228B22"
@@ -1010,7 +1013,7 @@ def generate_svg(gene1, gene2, len1, len2, blast_hits,
                 if 'gene' not in ginfo:
                     continue
                 g_start, g_end = ginfo['gene']
-                print(f"[DEBUG] candidate gene {gid} original ({g_start},{g_end})")
+                logger.debug(f" candidate gene {gid} original ({g_start},{g_end})")
 
                 if revcomp:
                     mapped_g_start = chro_start + chro_end - g_end
@@ -1018,7 +1021,7 @@ def generate_svg(gene1, gene2, len1, len2, blast_hits,
                     if mapped_g_start > mapped_g_end:
                         mapped_g_start, mapped_g_end = mapped_g_end, mapped_g_start
                     strand = '+' if ginfo['strand'] == '-' else '-'
-                    print(f"[DEBUG] revcomp gene {gid}: mapped to ({mapped_g_start},{mapped_g_end}) strand={strand}")
+                    logger.debug(f" revcomp gene {gid}: mapped to ({mapped_g_start},{mapped_g_end}) strand={strand}")
                 else:
                     mapped_g_start = g_start
                     mapped_g_end   = g_end
@@ -1026,7 +1029,7 @@ def generate_svg(gene1, gene2, len1, len2, blast_hits,
 
                 # Check if gene overlaps display region
                 if mapped_g_end < chro_start or mapped_g_start > chro_end:
-                    print(f"[DEBUG] gene {gid} out of display region after mapping, skipping")
+                    logger.debug(f" gene {gid} out of display region after mapping, skipping")
                     continue
                 gene_region_start = max(mapped_g_start, chro_start)
                 gene_region_end = min(mapped_g_end, chro_end)
@@ -1034,12 +1037,12 @@ def generate_svg(gene1, gene2, len1, len2, blast_hits,
                 # Get longest mRNA and its exons
                 mrna_ids = list(ginfo.get('mRNA', {}).keys())
                 if not mrna_ids:
-                    print(f"[DEBUG] gene {gid} has no mRNA info, skipping")
+                    logger.debug(f" gene {gid} has no mRNA info, skipping")
                     continue
                 mrna_id = max(mrna_ids, key=lambda mid: mRNA_info[mid]['pos'][1] - mRNA_info[mid]['pos'][0])
                 exons = mRNA_info[mrna_id].get('exon', [])
                 if not exons:
-                    print(f"[DEBUG] gene {gid} has no exon info, skipping")
+                    logger.debug(f" gene {gid} has no exon info, skipping")
                     continue
 
                 # Map exons to display coordinates
@@ -1060,10 +1063,10 @@ def generate_svg(gene1, gene2, len1, len2, blast_hits,
                         mapped_exons.append((mex_start, mex_end))
 
                 if not mapped_exons:
-                    print(f"[DEBUG] gene {gid} has no exon in display region after mapping")
+                    logger.debug(f" gene {gid} has no exon in display region after mapping")
                     continue
                 mapped_exons.sort()
-                print(f"[DEBUG] gene {gid} mapped exons: {mapped_exons}")
+                logger.debug(f" gene {gid} mapped exons: {mapped_exons}")
 
                 # Introns (gaps between exons)
                 introns = []
@@ -1100,7 +1103,7 @@ def generate_svg(gene1, gene2, len1, len2, blast_hits,
                         x1, y = chro_obj.coordinate(seg_start, is_up=True, is_start=True)
                         x2, y = chro_obj.coordinate(seg_end, is_up=True, is_start=False)
                         if x1 is None or x2 is None or x2 - x1 <= 0:
-                            print(f"[DEBUG] segment ({seg_start},{seg_end}) gave invalid coordinates")
+                            logger.debug(f" segment ({seg_start},{seg_end}) gave invalid coordinates")
                             continue
 
                         # Determine color
@@ -1433,9 +1436,14 @@ def main():
     te_info = []
 
     # Setup logging
+    if args.quiet:
+        logging.basicConfig(level=logging.WARNING, format="%(message)s")
+    else:
+        logging.basicConfig(level=logging.DEBUG, format="%(message)s")
+
     def log(msg):
-        if not args.quiet:
-            sys.stdout.write(msg if msg.endswith('\n') else msg + '\n')
+        """Log informational messages (respects --quiet)."""
+        logger.info(msg.rstrip('\n'))
 
     # Check external dependencies
     for tool in ['samtools', 'blastn', 'makeblastdb']:
@@ -1556,13 +1564,13 @@ def main():
 
     # Common steps
     if gene_mode:
-        print(f"[DEBUG] gene1: {args.gene1} on {chr1}:{start1}-{end1} strand={strand1}")
-        print(f"[DEBUG] gene2: {args.gene2} on {chr2}:{start2}-{end2} strand={strand2}")
+        logger.debug(f" gene1: {args.gene1} on {chr1}:{start1}-{end1} strand={strand1}")
+        logger.debug(f" gene2: {args.gene2} on {chr2}:{start2}-{end2} strand={strand2}")
         gene1_display = args.gene1
         gene2_display = args.gene2
     else:
-        print(f"[DEBUG] region1: {chr1}:{start1}-{end1}")
-        print(f"[DEBUG] region2: {chr2}:{start2}-{end2}")
+        logger.debug(f" region1: {chr1}:{start1}-{end1}")
+        logger.debug(f" region2: {chr2}:{start2}-{end2}")
         # Use region strings as identifiers
         gene1_display = f"{chr1}:{seq1_start}-{seq1_end}"
         gene2_display = f"{chr2}:{seq2_start}-{seq2_end}"

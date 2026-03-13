@@ -133,3 +133,58 @@ def test_parse_gene_gff_with_cds(tmp_path):
     assert 'g1' in gene_info
     assert 't1' in mRNA_info
     assert len(mRNA_info['t1'].get('exon', [])) == 2
+
+
+def test_parse_te_gff(tmp_path):
+    """TE GFF parsing recognizes transposable_element features."""
+    from microsynviz.core import parse_te_gff, te_info
+    te_info.clear()
+    gff = tmp_path / "te.gff"
+    gff.write_text(
+        "chr1\tRepeatMasker\ttransposable_element\t500\t800\t.\t+\t.\tID=TE001;Target \"Motif:hAT\" 1 300\n"
+        "chr1\tRepeatMasker\ttransposable_element\t1000\t1200\t.\t-\t.\tID=TE002\n"
+    )
+    parse_te_gff(str(gff))
+    assert len(te_info) == 2
+    assert te_info[0][4] == "hAT"  # motif name extracted
+    assert te_info[1][4] == "unknown"  # no motif → unknown
+
+
+def test_parse_bed_genes(tmp_path):
+    """BED12 gene parsing extracts exon blocks."""
+    from microsynviz.core import parse_bed_genes, gene_info, mRNA_info
+    gene_info.clear()
+    mRNA_info.clear()
+    bed = tmp_path / "genes.bed"
+    # BED12: 2 blocks (exons)
+    bed.write_text("chr1\t99\t500\tMyGene\t0\t+\t99\t500\t0\t2\t100,150\t0,251\n")
+    parse_bed_genes(str(bed))
+    assert 'MyGene' in gene_info
+    assert gene_info['MyGene']['gene'] == (100, 500)  # 0-based → 1-based
+    mrna = mRNA_info.get('MyGene.1')
+    assert mrna is not None
+    assert len(mrna['exon']) == 2
+
+
+def test_parse_annotation_gff(tmp_path):
+    """parse_annotation auto-detects GFF and parses genes + TEs."""
+    from microsynviz.core import parse_annotation, gene_info, mRNA_info, te_info
+    gene_info.clear()
+    mRNA_info.clear()
+    te_info.clear()
+    gff = tmp_path / "mixed.gff"
+    gff.write_text(
+        "chr1\tmaker\tgene\t100\t500\t.\t+\t.\tID=g1\n"
+        "chr1\tmaker\tmRNA\t100\t500\t.\t+\t.\tID=t1;Parent=g1\n"
+        "chr1\tmaker\texon\t100\t300\t.\t+\t.\tID=e1;Parent=t1\n"
+        "chr1\tRepMask\ttransposable_element\t600\t900\t.\t-\t.\tID=te1\n"
+    )
+    parse_annotation(str(gff))
+    assert 'g1' in gene_info
+    assert len(te_info) >= 1
+
+
+def test_quiet_logging(tmp_path):
+    """Verify logger exists and is named correctly."""
+    from microsynviz.core import logger
+    assert logger.name == "MicroSynViz"
