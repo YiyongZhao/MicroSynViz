@@ -30,7 +30,6 @@
 - [Command-line Options](#command-line-options)
 - [Output Files](#output-files)
 - [Examples](#examples)
-- [Contributing](#contributing)
 - [License](#license)
 
 ---
@@ -250,11 +249,6 @@ bash run_example.sh
 
 ---
 
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
----
 
 ## License
 
