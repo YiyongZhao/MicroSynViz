@@ -1417,27 +1417,27 @@ def main():
         epilog="For detailed documentation, see https://github.com/YiyongZhao/MicroSynViz"
     )
     # Target: gene IDs or genomic regions
-    parser.add_argument("--gene1", help="Gene ID for region 1 (required if --region1 not used)")
-    parser.add_argument("--gene2", help="Gene ID for region 2 (required if --region2 not used)")
+    parser.add_argument("--gene1", help="Gene ID for region 1. Searched in --annos1 files (GFF/GTF/BED); falls back to FASTA header match if not found or no annotations provided")
+    parser.add_argument("--gene2", help="Gene ID for region 2. Searched in --annos2 files; falls back to FASTA header match")
     parser.add_argument("--region1", help="Region 1 in SeqID:start-end format. "
                         "For genome FASTA: Chr1:1000-5000; for CDS FASTA: LOC_Os06g50440:1-1000")
     parser.add_argument("--region2", help="Region 2 in SeqID:start-end format. "
                         "For genome FASTA: Chr2:3000-8000; for CDS FASTA: AT1G01010:1-2000")
-    parser.add_argument("--extend", type=int, default=3000, help="Bases to extend around genes/regions (default: 3000)")
+    parser.add_argument("--extend", type=int, default=3000, help="Bases to extend around genes/regions (default: 3000). Use 0 for CDS/transcript FASTA")
 
     # Per-region input files
     parser.add_argument("--fa1", default=None, metavar='FASTA',
-                        help="FASTA file for region 1 (genome or CDS/transcript). Takes priority over legacy flags.")
+                        help="FASTA file for region 1. Accepts genome (chromosome-level) or CDS/transcript (gene-level) FASTA. Auto-indexed if .fai missing. Takes priority over legacy flags.")
     parser.add_argument("--g1", default=None, metavar='FASTA',
                         help=argparse.SUPPRESS)  # Legacy alias for --fa1
     parser.add_argument("--g2", default=None, metavar='FASTA',
                         help=argparse.SUPPRESS)  # Legacy alias for --fa2
     parser.add_argument("--fa2", default=None, metavar='FASTA',
-                        help="FASTA file for region 2 (genome or CDS/transcript). Takes priority over legacy flags.")
+                        help="FASTA file for region 2. Accepts genome or CDS/transcript FASTA. Auto-indexed if .fai missing.")
     parser.add_argument("--annos1", nargs='+', default=None, metavar='FILE',
-                        help="Annotation file(s) for region 1 (GFF3, GTF, BED). Optional for CDS/sequence FASTA.")
+                        help="Annotation file(s) for region 1 (GFF3, GTF, or BED format). Multiple files accepted: first file renders closest to chromosome bar, subsequent files layer outward. Optional for CDS/transcript FASTA.")
     parser.add_argument("--annos2", nargs='+', default=None, metavar='FILE',
-                        help="Annotation file(s) for region 2 (GFF3, GTF, BED). Optional for CDS/sequence FASTA.")
+                        help="Annotation file(s) for region 2 (GFF3, GTF, or BED format). Multiple files accepted, layered outward by order. Optional for CDS/transcript FASTA.")
 
     # Legacy aliases (hidden, for backward compatibility)
     parser.add_argument("--gffs1", nargs='+', help=argparse.SUPPRESS)
@@ -1477,7 +1477,7 @@ def main():
     parser.add_argument('--no_scale', action="store_true", help="Omit scale bar")
     parser.add_argument('--gap', type=float, default=0, help="Gap between chromosome and hit polygons (default: 0)")
     parser.add_argument('--pos_label_x_offset', type=float, default=170, help="X offset for position labels (default: 170)")
-    parser.add_argument('--ribbon_opacity', default=0.1, type=float, help="Opacity of BLAST homology ribbons (0-1, default: 0.2)")
+    parser.add_argument('--ribbon_opacity', default=0.1, type=float, help="Opacity of BLAST homology ribbons. 0=invisible, 1=opaque (default: 0.1)")
     parser.add_argument('--bezier', action="store_true", help="Use Bezier curves for hit polygons")
 
     # TE track options
@@ -1487,7 +1487,7 @@ def main():
     parser.add_argument('--te_track_offset', type=float, default=30, help="Distance from chromosome to TE track (default: 30)")
 
     # Output
-    parser.add_argument("--output", default="MicroSynViz_result", help="Output file prefix (default: MicroSynViz_result)")
+    parser.add_argument("--output", default="MicroSynViz_result", help="Output file prefix. Generates {prefix}_linkview.svg, {prefix}_linkview.pdf, {prefix}_genes.fasta, {prefix}_blast.txt (default: MicroSynViz_result)")
 
     # Verbosity
     parser.add_argument('--quiet', '-q', action='store_true',

@@ -182,6 +182,8 @@ MicroSynViz --gene1 A --gene2 B \
 
 ## Quick Start
 
+> **CDS/Transcript FASTA mode**: When using CDS or transcript FASTA files (where each sequence header is a gene ID), annotation files (`--annos1`/`--annos2`) are **optional**. Gene IDs are matched directly against FASTA headers. Use `--extend 0` to avoid extracting beyond sequence boundaries.
+
 ### Single-species: Compare two genes
 
 ```bash
@@ -218,6 +220,16 @@ MicroSynViz \
     --output region_synteny
 ```
 
+### CDS/Transcript mode (no annotations needed)
+
+```bash
+MicroSynViz \
+    --gene1 GENE_A --gene2 GENE_B \
+    --fa1 cds.fa --fa2 cds.fa \
+    --extend 0 --bezier \
+    --output cds_comparison
+```
+
 ### Region mode (CDS/transcript FASTA)
 
 ```bash
@@ -241,15 +253,15 @@ Run `MicroSynViz --help` to see all options.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `--gene1` | str | Gene ID for region 1 |
-| `--gene2` | str | Gene ID for region 2 |
+| `--gene1` | str | Gene ID for region 1. Searched in `--annos1` files; falls back to FASTA header if not found |
+| `--gene2` | str | Gene ID for region 2. Searched in `--annos2` files; falls back to FASTA header if not found |
 | `--region1` | str | Region 1 in `SeqID:start-end` format. Genome: `Chr1:1000-5000`; CDS: `GeneID:1-1000` |
 | `--region2` | str | Region 2 in `SeqID:start-end` format. Genome: `Chr2:3000-8000`; CDS: `GeneID:1-2000` |
-| `--fa1` | FASTA | FASTA file for region 1 (genome or CDS/transcript) |
-| `--fa2` | FASTA | FASTA file for region 2 (genome or CDS/transcript) |
-| `--annos1` | FILE+ | Annotation file(s) for region 1 (gene, TE, etc.) |
-| `--annos2` | FILE+ | Annotation file(s) for region 2 (gene, TE, etc.) |
-| `--extend` | int | Flanking extension in bp (default: 3000) |
+| `--fa1` | FASTA | FASTA file for region 1 — genome (chromosome-level) or CDS/transcript (gene-level). Auto-indexed if `.fai` missing |
+| `--fa2` | FASTA | FASTA file for region 2 — genome (chromosome-level) or CDS/transcript (gene-level). Auto-indexed if `.fai` missing |
+| `--annos1` | GFF3/GTF/BED | Annotation file(s) for region 1. Multiple files accepted (e.g., `genes.gff TEs.gff`); rendered from center outward by order. **Optional** for CDS FASTA |
+| `--annos2` | GFF3/GTF/BED | Annotation file(s) for region 2. Multiple files accepted; rendered from center outward by order. **Optional** for CDS FASTA |
+| `--extend` | int | Flanking extension in bp (default: 3000). Use `0` for CDS FASTA |
 
 ### BLAST
 
@@ -267,11 +279,20 @@ Run `MicroSynViz --help` to see all options.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `--bezier` | flag | — | Bezier curves for ribbons |
+| `--bezier` | flag | — | Use Bezier curves for smooth homology ribbons |
+| `--ribbon_opacity` | float | 0.2 | Opacity of BLAST ribbons (0=invisible, 1=opaque) |
+| `--svg_width` | float | 2000 | SVG canvas width in virtual units |
+| `--svg_height` | float | 800 | SVG canvas height in virtual units |
+| `--chro_thickness` | float | 15 | Thickness of chromosome bar (virtual units) |
+| `--chro_axis` | flag | — | Draw tick marks on chromosome bars |
+| `--no_scale` | flag | — | Omit the scale bar |
+| `--gap` | float | 0 | Gap between chromosome bar and ribbons |
+| `--te_track_height` | float | 12 | Height of TE annotation rectangles |
+| `--te_track_offset` | float | 30 | Distance from chromosome bar to TE track |
 | `--svg_width` | int | 2000 | SVG canvas width |
 | `--svg_height` | int | 800 | SVG canvas height |
 | `--output` | str | MicroSynViz_result | Output file prefix |
-| `--quiet` / `-q` | flag | — | Suppress informational output |
+| `--quiet` / `-q` | flag | — | Suppress informational output (warnings/errors only) |
 
 ---
 
