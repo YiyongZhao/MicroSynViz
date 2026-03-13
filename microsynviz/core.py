@@ -17,7 +17,7 @@ Features:
 - Two input modes: gene IDs or genomic regions (with automatic extension)
 
 Dependencies:
-    Python 3.6+
+    Python 3.8+
     BioPython
     pandas
     cairosvg
@@ -717,11 +717,9 @@ def generate_svg(gene1, gene2, len1, len2, blast_hits,
     # Score range for legend (based on --color_by)
     color_metric = args.color_by
     legend_min = legend_max = None
-    invert_color = False  # True for evalue (lower = better)
     if relevant_hits:
         scores = [hit[color_metric if color_metric != 'identity' else 'pident'] for hit in relevant_hits]
         if color_metric == 'evalue':
-            invert_color = True
             # Use -log10(evalue) for color mapping (higher = better match)
             scores = [-math.log10(max(s, 1e-300)) for s in scores]
         legend_min = min(scores)
@@ -1395,11 +1393,21 @@ def main():
     # Output
     parser.add_argument("--output", default="MicroSynViz_result", help="Output file prefix (default: MicroSynViz_result)")
 
+    # Verbosity
+    parser.add_argument('--quiet', '-q', action='store_true',
+                        help="Suppress informational output (only show warnings and errors)")
+
     # Version
     parser.add_argument('--version', action='version', version=f'MicroSynViz {__version__}')
 
     args = parser.parse_args()
     scale = 1.0
+
+    # Reset global state (safety for repeated calls / testing)
+    global gene_info, mRNA_info, te_info
+    gene_info = {}
+    mRNA_info = {}
+    te_info = []
 
     # Check external dependencies
     import shutil
