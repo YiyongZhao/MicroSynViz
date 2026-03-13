@@ -1119,18 +1119,23 @@ def main():
     # Region mode (optional, if not provided, uses full extracted region)
     parser.add_argument("--extend", type=int, default=3000, help="Bases to extend around genes/regions (default: 3000)")
 
-    # Single species mode
-    parser.add_argument("--gff", help="GFF file for single species mode")
-    parser.add_argument("--fasta", help="Genome FASTA for single species mode")
-    parser.add_argument("--te_gff", help="TE GFF for single species mode")
+    # Unified input files: 1 file = same species, 2 files = cross-species
+    parser.add_argument("-g", "--genome", nargs='+', metavar='FASTA',
+                        help="Genome FASTA file(s). 1 file for single-species, 2 for cross-species.")
+    parser.add_argument("--gff", nargs='+', metavar='GFF',
+                        help="GFF3 annotation file(s). 1 file for single-species, 2 for cross-species.")
+    parser.add_argument("--te", nargs='*', metavar='GFF', default=None,
+                        help="TE annotation GFF file(s) (optional). 1 or 2 files.")
 
-    # Dual species mode
-    parser.add_argument("--gff1", help="GFF file for species 1")
-    parser.add_argument("--gff2", help="GFF file for species 2")
-    parser.add_argument("--fasta1", help="Genome FASTA for species 1")
-    parser.add_argument("--fasta2", help="Genome FASTA for species 2")
-    parser.add_argument("--te_gff1", help="TE GFF for species 1")
-    parser.add_argument("--te_gff2", help="TE GFF for species 2")
+    # Legacy aliases (hidden, for backward compatibility)
+    parser.add_argument("--fasta", help=argparse.SUPPRESS)
+    parser.add_argument("--te_gff", help=argparse.SUPPRESS)
+    parser.add_argument("--gff1", help=argparse.SUPPRESS)
+    parser.add_argument("--gff2", help=argparse.SUPPRESS)
+    parser.add_argument("--fasta1", help=argparse.SUPPRESS)
+    parser.add_argument("--fasta2", help=argparse.SUPPRESS)
+    parser.add_argument("--te_gff1", help=argparse.SUPPRESS)
+    parser.add_argument("--te_gff2", help=argparse.SUPPRESS)
 
     # BLAST options
     parser.add_argument("--evalue", type=float, default=1e-5, help="BLAST e-value threshold (default: 1e-5)")
@@ -1185,111 +1190,101 @@ def main():
         # Override: use gene mode
         region_mode = False
 
-    # Determine single vs dual species mode
-    dual_species = (args.fasta1 is not None and args.fasta2 is not None)
+    # ===================== Resolve input files =====================
+    # Unified logic: --genome/-g and --gff accept 1 or 2 files
+    # 1 file = single-species (shared), 2 files = cross-species
+    # Legacy flags (--fasta, --fasta1/2, --gff1/2, --te_gff, --te_gff1/2) are also accepted
 
-    if dual_species:
-        if args.fasta is not None or args.gff is not None:
-            sys.stderr.write("[WARNING] Both single-species and dual-species arguments provided. Using dual-species mode.\n")
-        fasta1 = args.fasta1
-        fasta2 = args.fasta2
-        gff1 = args.gff1
-        gff2 = args.gff2
-        te_gff1 = args.te_gff1
-        te_gff2 = args.te_gff2
+    # Merge legacy flags into unified lists
+    genome_files = args.genome or []
+    gff_files = list(args.gff) if args.gff else []
+    te_files = list(args.te) if args.te else []
 
-        if gff1 is None or gff2 is None:
-            sys.stderr.write("[ERROR] In dual-species mode, --gff1 and --gff2 are required.\n")
-            sys.exit(1)
+    # Legacy: --fasta / --fasta1 / --fasta2
+    if not genome_files:
+        if args.fasta1 and args.fasta2:
+            genome_files = [args.fasta1, args.fasta2]
+        elif args.fasta:
+            genome_files = [args.fasta]
+    # Legacy: --gff1 / --gff2 (only if --gff not already given)
+    if not gff_files:
+        if args.gff1 and args.gff2:
+            gff_files = [args.gff1, args.gff2]
+    # Legacy: --te_gff / --te_gff1 / --te_gff2
+    if not te_files:
+        if args.te_gff1 or args.te_gff2:
+            te_files = [f for f in [args.te_gff1, args.te_gff2] if f]
+        elif args.te_gff:
+            te_files = [args.te_gff]
 
-        for f in [fasta1, fasta2, gff1, gff2]:
-            check_file_exists(f)
+    # Validate
+    if not genome_files:
+        sys.stderr.write("[ERROR] --genome/-g is required. Provide 1 FASTA (single-species) or 2 (cross-species).\n")
+        sys.exit(1)
+    if len(genome_files) > 2:
+        sys.stderr.write("[ERROR] --genome/-g accepts at most 2 files.\n")
+        sys.exit(1)
+    if not gff_files:
+        sys.stderr.write("[ERROR] --gff is required. Provide 1 GFF (single-species) or 2 (cross-species).\n")
+        sys.exit(1)
+    if len(gff_files) > 2:
+        sys.stderr.write("[ERROR] --gff accepts at most 2 files.\n")
+        sys.exit(1)
+    if len(te_files) > 2:
+        sys.stderr.write("[ERROR] --te accepts at most 2 files.\n")
+        sys.exit(1)
 
-        sys.stdout.write("[Step 1/4] Extracting coordinates (dual species)...\n")
-        if gene_mode:
-            chr1, start1, end1, strand1 = extract_gene_coordinates(args.gene1, gff1)
-            chr2, start2, end2, strand2 = extract_gene_coordinates(args.gene2, gff2)
-            seq1, seq1_start, seq1_end = extract_sequence_samtools(chr1, start1, end1, args.gene1, fasta1, args.extend)
-            seq2, seq2_start, seq2_end = extract_sequence_samtools(chr2, start2, end2, args.gene2, fasta2, args.extend)
-        else:  # region mode
-            chr1, start1, end1 = parse_region(args.region1)
-            chr2, start2, end2 = parse_region(args.region2)
-            strand1 = '+'
-            strand2 = '+'
-            seq1, seq1_start, seq1_end = extract_region_samtools(chr1, start1, end1, fasta1, args.extend)
-            seq2, seq2_start, seq2_end = extract_region_samtools(chr2, start2, end2, fasta2, args.extend)
+    # Expand: 1 file → use for both regions
+    fasta1 = genome_files[0]
+    fasta2 = genome_files[1] if len(genome_files) == 2 else genome_files[0]
+    gff1 = gff_files[0]
+    gff2 = gff_files[1] if len(gff_files) == 2 else gff_files[0]
+    te_gff1 = te_files[0] if len(te_files) >= 1 else None
+    te_gff2 = te_files[1] if len(te_files) == 2 else te_gff1
 
-        # Parse gene GFFs
-        sys.stdout.write("[Step 2a/4] Parsing gene GFFs...\n")
-        try:
-            parse_gene_gff(gff1)
+    dual_species = (fasta1 != fasta2) or (gff1 != gff2)
+    mode_label = "cross-species" if dual_species else "single-species"
+
+    for f in [fasta1, fasta2, gff1, gff2]:
+        check_file_exists(f)
+
+    sys.stdout.write(f"[Step 1/4] Extracting coordinates ({mode_label})...\n")
+    if gene_mode:
+        chr1, start1, end1, strand1 = extract_gene_coordinates(args.gene1, gff1)
+        chr2, start2, end2, strand2 = extract_gene_coordinates(args.gene2, gff2)
+        seq1, seq1_start, seq1_end = extract_sequence_samtools(chr1, start1, end1, args.gene1, fasta1, args.extend)
+        seq2, seq2_start, seq2_end = extract_sequence_samtools(chr2, start2, end2, args.gene2, fasta2, args.extend)
+    else:  # region mode
+        chr1, start1, end1 = parse_region(args.region1)
+        chr2, start2, end2 = parse_region(args.region2)
+        strand1 = '+'
+        strand2 = '+'
+        seq1, seq1_start, seq1_end = extract_region_samtools(chr1, start1, end1, fasta1, args.extend)
+        seq2, seq2_start, seq2_end = extract_region_samtools(chr2, start2, end2, fasta2, args.extend)
+
+    # Parse gene GFFs
+    sys.stdout.write("[Step 2a/4] Parsing gene GFF(s)...\n")
+    try:
+        parse_gene_gff(gff1)
+        if gff2 != gff1:
             parse_gene_gff(gff2)
-            sys.stdout.write(f"[Info] Found {len(gene_info)} genes in total.\n")
-        except Exception as e:
-            sys.stderr.write(f"[WARNING] Failed to parse gene GFF: {e}\n")
-            sys.stderr.write("Gene structures will not be drawn.\n")
+        sys.stdout.write(f"[Info] Found {len(gene_info)} genes in total.\n")
+    except Exception as e:
+        sys.stderr.write(f"[WARNING] Failed to parse gene GFF: {e}\n")
+        sys.stderr.write("Gene structures will not be drawn.\n")
 
-        # Parse TE GFFs
-        if te_gff1:
-            sys.stdout.write("[Step 2b/4] Parsing TE GFF for species 1...\n")
-            try:
-                parse_te_gff(te_gff1)
-            except Exception as e:
-                sys.stderr.write(f"[WARNING] Failed to parse TE GFF1: {e}\n")
-        if te_gff2:
-            sys.stdout.write("[Step 2b/4] Parsing TE GFF for species 2...\n")
-            try:
-                parse_te_gff(te_gff2)
-            except Exception as e:
-                sys.stderr.write(f"[WARNING] Failed to parse TE GFF2: {e}\n")
-        if te_gff1 or te_gff2:
-            sys.stdout.write(f"[Info] Total TE entries: {len(te_info)}\n")
-        else:
-            sys.stdout.write("[Step 2b/4] No TE GFF provided.\n")
-
-    else:  # Single species mode
-        if args.fasta is None or args.gff is None:
-            sys.stderr.write("[ERROR] In single-species mode, --fasta and --gff are required.\n")
-            sys.exit(1)
-        fasta = args.fasta
-        gff = args.gff
-        te_gff = args.te_gff
-
-        check_file_exists(fasta)
-        check_file_exists(gff)
-
-        sys.stdout.write("[Step 1/4] Extracting coordinates (single species)...\n")
-        if gene_mode:
-            chr1, start1, end1, strand1 = extract_gene_coordinates(args.gene1, gff)
-            chr2, start2, end2, strand2 = extract_gene_coordinates(args.gene2, gff)
-            seq1, seq1_start, seq1_end = extract_sequence_samtools(chr1, start1, end1, args.gene1, fasta, args.extend)
-            seq2, seq2_start, seq2_end = extract_sequence_samtools(chr2, start2, end2, args.gene2, fasta, args.extend)
-        else:  # region mode
-            chr1, start1, end1 = parse_region(args.region1)
-            chr2, start2, end2 = parse_region(args.region2)
-            strand1 = '+'
-            strand2 = '+'
-            seq1, seq1_start, seq1_end = extract_region_samtools(chr1, start1, end1, fasta, args.extend)
-            seq2, seq2_start, seq2_end = extract_region_samtools(chr2, start2, end2, fasta, args.extend)
-
-        sys.stdout.write("[Step 2a/4] Parsing gene GFF...\n")
+    # Parse TE GFFs
+    if te_gff1:
+        sys.stdout.write("[Step 2b/4] Parsing TE GFF(s)...\n")
         try:
-            parse_gene_gff(gff)
-            sys.stdout.write(f"[Info] Found {len(gene_info)} genes in gene GFF.\n")
+            parse_te_gff(te_gff1)
+            if te_gff2 and te_gff2 != te_gff1:
+                parse_te_gff(te_gff2)
+            sys.stdout.write(f"[Info] Found {len(te_info)} TE entries.\n")
         except Exception as e:
-            sys.stderr.write(f"[WARNING] Failed to parse gene GFF: {e}\n")
-            sys.stderr.write("Gene structures will not be drawn.\n")
-
-        if te_gff:
-            sys.stdout.write("[Step 2b/4] Parsing TE GFF...\n")
-            try:
-                parse_te_gff(te_gff)
-                sys.stdout.write(f"[Info] Found {len(te_info)} TE elements in TE GFF.\n")
-            except Exception as e:
-                sys.stderr.write(f"[WARNING] Failed to parse TE GFF: {e}\n")
-                sys.stderr.write("TE annotations will not be drawn.\n")
-        else:
-            sys.stdout.write("[Step 2b/4] No TE GFF provided.\n")
+            sys.stderr.write(f"[WARNING] Failed to parse TE GFF: {e}\n")
+    else:
+        sys.stdout.write("[Step 2b/4] No TE annotation provided.\n")
 
     # Common steps
     if gene_mode:

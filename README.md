@@ -58,14 +58,15 @@ Unlike genome-wide synteny tools (MCScanX, SynVisio, JupiterPlot), MicroSynViz f
 ## Key Features
 
 - **Single-species and cross-species** pairwise microsynteny comparison
+- **Unified interface**: same parameters for both modes — provide 1 file for single-species, 2 for cross-species
 - **Two input modes**: gene IDs (`--gene1/--gene2`) or genomic regions (`--region1/--region2`)
 - **Automatic reverse complement** detection based on BLAST alignment orientation
+- **Flexible ribbon coloring**: color by bitscore, identity, or e-value (`--color_by`)
+- **BLAST filtering**: minimum identity and alignment length thresholds
 - **TE track** with motif labels for transposable element visualization
 - **Gene structure** (exons/introns) visualization from GFF3 annotation
-- **Core range highlighting** for focused synteny regions
 - **SVG and PDF output** (vector graphics via CairoSVG)
 - **Bezier curve** rendering for smooth homology ribbons
-- **Flexible ribbon coloring**: color by bitscore, identity, or e-value (`--color_by`)
 
 ---
 
@@ -124,8 +125,6 @@ python -m microsynviz --help
 
 ## Input Files
 
-MicroSynViz requires several input files. All are plain text; please follow the exact formats.
-
 ### 1. GFF3 Annotation
 
 Standard GFF3 format with `gene`, `mRNA`, and `exon` features. The `ID=` attribute in column 9 is used to identify genes.
@@ -166,9 +165,9 @@ blastn -query seq1.fa -subject seq2.fa -outfmt 6 -evalue 1e-5 > blast.txt
 MicroSynViz \
     --gene1 LOC_Os06g50440 \
     --gene2 LOC_Os06g50789 \
+    -g genome.fa \
     --gff annotation.gff \
-    --fasta genome.fa \
-    --te_gff TEs.gff \
+    --te TEs.gff \
     --auto_complementary \
     --bezier \
     --output my_synteny
@@ -180,9 +179,8 @@ MicroSynViz \
 MicroSynViz \
     --region1 Chr1:1000-5000 \
     --region2 Chr2:3000-8000 \
+    -g genome.fa \
     --gff annotation.gff \
-    --fasta genome.fa \
-    --te_gff TEs.gff \
     --extend 5000 \
     --output region_synteny
 ```
@@ -193,16 +191,15 @@ MicroSynViz \
 MicroSynViz \
     --gene1 GeneA \
     --gene2 GeneB \
-    --gff1 speciesA.gff \
-    --fasta1 speciesA.fa \
-    --gff2 speciesB.gff \
-    --fasta2 speciesB.fa \
-    --te_gff1 speciesA_te.gff \
-    --te_gff2 speciesB_te.gff \
+    -g rice.fa maize.fa \
+    --gff rice.gff maize.gff \
+    --te rice_te.gff maize_te.gff \
     --auto_complementary \
     --bezier \
     --output cross_species_synteny
 ```
+
+> **Rule**: 1 file = shared by both regions (single-species); 2 files = first for gene1/region1, second for gene2/region2 (cross-species).
 
 ---
 
@@ -210,34 +207,43 @@ MicroSynViz \
 
 Run `MicroSynViz --help` to see all options.
 
+### Input
+
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `--gene1` | str | — | Gene ID for region 1 |
 | `--gene2` | str | — | Gene ID for region 2 |
 | `--region1` | str | — | Genomic region (Chr:start-end) for region 1 |
 | `--region2` | str | — | Genomic region (Chr:start-end) for region 2 |
-| `--gff` | str | — | GFF3 annotation (single species) |
-| `--gff1` / `--gff2` | str | — | GFF3 annotations (cross-species) |
-| `--fasta` | str | — | Genome FASTA (single species) |
-| `--fasta1` / `--fasta2` | str | — | Genome FASTAs (cross-species) |
-| `--te_gff` | str | — | TE annotation GFF (single species) |
-| `--te_gff1` / `--te_gff2` | str | — | TE annotation GFFs (cross-species) |
-| `--blast_result` | str | — | Pre-computed BLAST result (skip auto-BLAST) |
+| `-g` / `--genome` | FASTA | — | Genome FASTA (1 or 2 files) |
+| `--gff` | GFF | — | GFF3 annotation (1 or 2 files) |
+| `--te` | GFF | — | TE annotation (optional; 1 or 2 files) |
 | `--extend` | int | 3000 | Flanking extension in bp |
-| `--evalue` | float | 1e-5 | BLAST e-value threshold |
-| `--identity` | float | 50 | Minimum BLAST identity % to display |
+
+### BLAST
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `--evalue` | float | 1e-5 | E-value threshold |
+| `--identity` | float | 50 | Minimum identity % to display |
 | `--alignment_length` | int | 5 | Minimum alignment length in bp |
-| `--color_by` | choice | bitscore | Ribbon color metric: `bitscore`, `identity`, or `evalue` |
+| `--color_by` | choice | bitscore | Ribbon color: `bitscore`, `identity`, or `evalue` |
 | `--threads` | int | 8 | BLAST threads |
+| `--blast_result` | str | — | Pre-computed BLAST result (skip auto-BLAST) |
 | `--auto_complementary` | flag | — | Auto-detect reverse complement |
+
+### Appearance
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
 | `--bezier` | flag | — | Use Bezier curves for ribbons |
+| `--svg_width` | int | 2000 | SVG canvas width |
+| `--svg_height` | int | 800 | SVG canvas height |
 | `--output` | str | MicroSynViz_result | Output file prefix |
 
 ---
 
 ## Output Files
-
-All output files are named with the prefix given by `--output` (default: `MicroSynViz_result`).
 
 | File | Description |
 |------|-------------|
