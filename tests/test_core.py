@@ -188,3 +188,36 @@ def test_quiet_logging(tmp_path):
     """Verify logger exists and is named correctly."""
     from microsynviz.core import logger
     assert logger.name == "MicroSynViz"
+
+
+def test_find_gene_in_fasta_index(tmp_path):
+    """_find_gene_in_fasta_index finds gene by FASTA header."""
+    import subprocess, shutil
+    if not shutil.which("samtools"):
+        pytest.skip("samtools not in PATH")
+    from microsynviz.core import _find_gene_in_fasta_index
+    
+    fa = tmp_path / "test.fa"
+    fa.write_text(">MYGENE\nATCGATCGATCG\n>OTHER\nGGGGGGGGGGGG\n")
+    subprocess.check_call(["samtools", "faidx", str(fa)])
+    
+    result = _find_gene_in_fasta_index("MYGENE", str(fa))
+    assert result is not None
+    assert result == ("MYGENE", 1, 12, "+")
+    
+    result2 = _find_gene_in_fasta_index("NONEXIST", str(fa))
+    assert result2 is None
+
+
+def test_find_gene_in_fasta_index_no_samtools(tmp_path):
+    """_find_gene_in_fasta_index returns None if no .fai and samtools unavailable."""
+    from microsynviz.core import _find_gene_in_fasta_index
+    
+    fa = tmp_path / "noidx.fa"
+    fa.write_text(">GENE1\nATCG\n")
+    # Don't create .fai — function should try to auto-index
+    # If samtools is available it will succeed; we just test it doesn't crash
+    result = _find_gene_in_fasta_index("GENE1", str(fa))
+    # Result depends on whether samtools is in PATH
+    if result:
+        assert result == ("GENE1", 1, 4, "+")

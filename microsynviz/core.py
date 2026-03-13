@@ -547,6 +547,36 @@ def extract_gene_coordinates(gene_id, anno_file):
                 return parts[0], int(parts[3]), int(parts[4]), parts[6]
     raise GeneNotFoundError(f"Gene '{gene_id}' not found in {anno_file}")
 
+
+
+def _find_gene_in_fasta_index(gene_id, fasta_file):
+    """Fallback: search FASTA index (.fai) for a sequence matching gene_id.
+    
+    This enables CDS/transcript FASTA input where sequence headers ARE the gene IDs.
+    Auto-creates .fai index if missing.
+    Returns (seq_name, 1, length, '+') or None.
+    """
+    fai_file = fasta_file + ".fai"
+    
+    # Auto-index if .fai doesn't exist
+    if not os.path.isfile(fai_file):
+        try:
+            subprocess.check_call(["samtools", "faidx", fasta_file])
+            logger.info(f" Auto-indexed: {fasta_file}")
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return None
+    
+    if not os.path.isfile(fai_file):
+        return None
+    
+    with open(fai_file, 'r') as f:
+        for line in f:
+            cols = line.strip().split('\t')
+            if len(cols) >= 2 and cols[0] == gene_id:
+                seq_len = int(cols[1])
+                return (gene_id, 1, seq_len, '+')
+    return None
+
 def extract_sequence_samtools(chr_id, start, end, gene_id, genome_fa, extend=3000):
     """Extract genomic region using samtools faidx (gene mode)."""
     check_file_exists(genome_fa)
@@ -1382,13 +1412,13 @@ def main():
 
     # Per-region input files
     parser.add_argument("--g1", default=None, metavar='FASTA',
-                        help="Genome FASTA for region 1. Takes priority over legacy flags (--genome / --fasta / --fasta1).")
+                        help="FASTA file for region 1 (genome or CDS/transcript). Takes priority over legacy flags.")
     parser.add_argument("--g2", default=None, metavar='FASTA',
-                        help="Genome FASTA for region 2. Takes priority over legacy flags (--genome / --fasta / --fasta2).")
+                        help="FASTA file for region 2 (genome or CDS/transcript). Takes priority over legacy flags.")
     parser.add_argument("--annos1", nargs='+', default=None, metavar='FILE',
-                        help="Annotation file(s) for region 1 (GFF3, GTF, BED -- gene, TE, etc.). Takes priority over legacy flags (--gff / --gff1 / --te / --te_gff).")
+                        help="Annotation file(s) for region 1 (GFF3, GTF, BED). Optional for CDS/sequence FASTA.")
     parser.add_argument("--annos2", nargs='+', default=None, metavar='FILE',
-                        help="Annotation file(s) for region 2 (GFF3, GTF, BED -- gene, TE, etc.). Takes priority over legacy flags (--gff / --gff2 / --te / --te_gff).")
+                        help="Annotation file(s) for region 2 (GFF3, GTF, BED). Optional for CDS/sequence FASTA.")
 
     # Legacy aliases (hidden, for backward compatibility)
     parser.add_argument("--gffs1", nargs='+', help=argparse.SUPPRESS)
@@ -1539,13 +1569,25 @@ def main():
     # Validate
     if not fasta1 or not fasta2:
         raise InputError("Genome FASTA required. Use --g1/--g2 (or legacy --genome/-g).")
-    if not annos1 or not annos2:
-        raise InputError("Annotation files required. Use --annos1/--annos2 (or legacy --gff).")
+    # annos are optional — CDS FASTA mode works without annotations
+    if not annos1:
+        annos1 = []
+    if not annos2:
+        annos2 = []
 
     check_file_exists(fasta1)
     check_file_exists(fasta2)
     for f in annos1 + annos2:
         check_file_exists(f)
+    
+    # Auto-index FASTA if .fai missing
+    for fa in [fasta1, fasta2]:
+        if not os.path.isfile(fa + ".fai"):
+            try:
+                subprocess.check_call(["samtools", "faidx", fa])
+                logger.info(f" Auto-indexed: {fa}")
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                pass  # Will fail later with a clear error
 
     dual_species = (fasta1 != fasta2)
     mode_label = "cross-species" if dual_species else "single-species"
@@ -1555,15 +1597,26 @@ def main():
     log(f"  Region 2: genome={fasta2}, annotations={annos2}\n")
 
     if gene_mode:
-        # Search all annotation files for gene coordinates (not just the first one)
-        result1 = _find_gene_in_annos(args.gene1, annos1)
+        # Search annotation files first, then fall back to FASTA index
+        result1 = _find_gene_in_annos(args.gene1, annos1) if annos1 else None
         if not result1:
-            raise GeneNotFoundError(f"Gene '{args.gene1}' not found in annotation files: {annos1}")
+            # Fallback: gene ID might be a sequence name in the FASTA (CDS mode)
+            result1 = _find_gene_in_fasta_index(args.gene1, fasta1)
+            if result1:
+                logger.info(f" gene1 '{args.gene1}' found in FASTA index (CDS/sequence mode)")
+        if not result1:
+            raise GeneNotFoundError(
+                f"Gene '{args.gene1}' not found in annotations {annos1} or FASTA index {fasta1}")
         chr1, start1, end1, strand1 = result1
 
-        result2 = _find_gene_in_annos(args.gene2, annos2)
+        result2 = _find_gene_in_annos(args.gene2, annos2) if annos2 else None
         if not result2:
-            raise GeneNotFoundError(f"Gene '{args.gene2}' not found in annotation files: {annos2}")
+            result2 = _find_gene_in_fasta_index(args.gene2, fasta2)
+            if result2:
+                logger.info(f" gene2 '{args.gene2}' found in FASTA index (CDS/sequence mode)")
+        if not result2:
+            raise GeneNotFoundError(
+                f"Gene '{args.gene2}' not found in annotations {annos2} or FASTA index {fasta2}")
         chr2, start2, end2, strand2 = result2
 
         seq1, seq1_start, seq1_end = extract_sequence_samtools(chr1, start1, end1, args.gene1, fasta1, args.extend)
@@ -1576,12 +1629,15 @@ def main():
         seq1, seq1_start, seq1_end = extract_region_samtools(chr1, start1, end1, fasta1, args.extend)
         seq2, seq2_start, seq2_end = extract_region_samtools(chr2, start2, end2, fasta2, args.extend)
 
-    # Parse ALL annotation files (auto-detect GFF3/GTF/BED)
-    log("[Step 2/4] Parsing annotations...\n")
+    # Parse annotation files (auto-detect GFF3/GTF/BED) — optional for CDS mode
     all_annos = list(dict.fromkeys(annos1 + annos2))  # deduplicate, preserve order
-    for anno_path in all_annos:
-        parse_annotation(anno_path)
-    log(f"  Found {len(gene_info)} genes, {len(te_info)} TE entries.\n")
+    if all_annos:
+        log("[Step 2/4] Parsing annotations...\n")
+        for anno_path in all_annos:
+            parse_annotation(anno_path)
+        log(f"  Found {len(gene_info)} genes, {len(te_info)} TE entries.\n")
+    else:
+        log("[Step 2/4] No annotation files provided — CDS/sequence mode (no gene structures)\n")
 
     # Common steps
     if gene_mode:
