@@ -1616,28 +1616,25 @@ def main():
     log(f"  Region 2: genome={fasta2}, annotations={annos2}\n")
 
     if gene_mode:
-        # Search ALL annotation files for each gene (annos1 first, then annos2 as fallback)
-        all_anno_files = list(dict.fromkeys(annos1 + annos2))  # deduplicate, preserve order
-        
-        result1 = _find_gene_in_annos(args.gene1, all_anno_files) if all_anno_files else None
+        # gene1 searches annos1 only; gene2 searches annos2 only
+        result1 = _find_gene_in_annos(args.gene1, annos1) if annos1 else None
         if not result1:
-            # Fallback: gene ID might be a sequence name in the FASTA (CDS mode)
             result1 = _find_gene_in_fasta_index(args.gene1, fasta1)
             if result1:
                 logger.info(f" gene1 '{args.gene1}' found in FASTA index (CDS/sequence mode)")
         if not result1:
             raise GeneNotFoundError(
-                f"Gene '{args.gene1}' not found in annotations {all_anno_files} or FASTA index {fasta1}")
+                f"Gene '{args.gene1}' not found in annos1 {annos1} or FASTA index {fasta1}")
         chr1, start1, end1, strand1 = result1
 
-        result2 = _find_gene_in_annos(args.gene2, all_anno_files) if all_anno_files else None
+        result2 = _find_gene_in_annos(args.gene2, annos2) if annos2 else None
         if not result2:
             result2 = _find_gene_in_fasta_index(args.gene2, fasta2)
             if result2:
                 logger.info(f" gene2 '{args.gene2}' found in FASTA index (CDS/sequence mode)")
         if not result2:
             raise GeneNotFoundError(
-                f"Gene '{args.gene2}' not found in annotations {all_anno_files} or FASTA index {fasta2}")
+                f"Gene '{args.gene2}' not found in annos2 {annos2} or FASTA index {fasta2}")
         chr2, start2, end2, strand2 = result2
 
         seq1, seq1_start, seq1_end = extract_sequence_samtools(chr1, start1, end1, args.gene1, fasta1, args.extend)
@@ -1651,11 +1648,18 @@ def main():
         seq2, seq2_start, seq2_end = extract_region_samtools(chr2, start2, end2, fasta2, args.extend)
 
     # Parse annotation files (auto-detect GFF3/GTF/BED) — optional for CDS mode
-    all_annos = list(dict.fromkeys(annos1 + annos2))  # deduplicate, preserve order
-    if all_annos:
+    if annos1 or annos2:
         log("[Step 2/4] Parsing annotations...\n")
-        for idx, anno_path in enumerate(all_annos):
-            parse_annotation(anno_path, source_order=idx)
+        # Parse annos1 and annos2 separately so source_order is per-region (0 = closest to chro bar)
+        parsed_set = set()
+        for idx, anno_path in enumerate(annos1):
+            if anno_path not in parsed_set:
+                parse_annotation(anno_path, source_order=idx)
+                parsed_set.add(anno_path)
+        for idx, anno_path in enumerate(annos2):
+            if anno_path not in parsed_set:
+                parse_annotation(anno_path, source_order=idx)
+                parsed_set.add(anno_path)
         log(f"  Found {len(gene_info)} genes, {len(te_info)} TE entries.\n")
     else:
         log("[Step 2/4] No annotation files provided — CDS/sequence mode (no gene structures)\n")
