@@ -1110,24 +1110,27 @@ def main():
         description="MicroSynViz: Visualize Pairwise Genomic Microsynteny",
         epilog="For detailed documentation, see https://github.com/YiyongZhao/MicroSynViz"
     )
-    # Two mutually exclusive input modes: gene IDs or genomic regions
-    parser.add_argument("--gene1", help="Gene ID for the first gene (required if --region1 not used)")
-    parser.add_argument("--gene2", help="Gene ID for the second gene (required if --region2 not used)")
-    parser.add_argument("--region1", help="First genomic region (e.g., Chr1:1000-2000); required if --gene1 not used")
-    parser.add_argument("--region2", help="Second genomic region; required if --gene2 not used")
-
-    # Region mode (optional, if not provided, uses full extracted region)
+    # Target: gene IDs or genomic regions
+    parser.add_argument("--gene1", help="Gene ID for region 1 (required if --region1 not used)")
+    parser.add_argument("--gene2", help="Gene ID for region 2 (required if --region2 not used)")
+    parser.add_argument("--region1", help="Genomic region 1 (e.g., Chr1:1000-2000)")
+    parser.add_argument("--region2", help="Genomic region 2 (e.g., Chr2:3000-8000)")
     parser.add_argument("--extend", type=int, default=3000, help="Bases to extend around genes/regions (default: 3000)")
 
-    # Unified input files: 1 file = same species, 2 files = cross-species
-    parser.add_argument("-g", "--genome", nargs='+', metavar='FASTA',
-                        help="Genome FASTA file(s). 1 file for single-species, 2 for cross-species.")
-    parser.add_argument("--gff", nargs='+', metavar='GFF',
-                        help="GFF3 annotation file(s). 1 file for single-species, 2 for cross-species.")
-    parser.add_argument("--te", nargs='*', metavar='GFF', default=None,
-                        help="TE annotation GFF file(s) (optional). 1 or 2 files.")
+    # Per-region input files
+    parser.add_argument("--g1", required=True, metavar='FASTA',
+                        help="Genome FASTA for gene1/region1")
+    parser.add_argument("--g2", required=True, metavar='FASTA',
+                        help="Genome FASTA for gene2/region2")
+    parser.add_argument("--gffs1", nargs='+', required=True, metavar='GFF',
+                        help="GFF file(s) for gene1/region1 (gene annotation, TE annotation, etc.)")
+    parser.add_argument("--gffs2", nargs='+', required=True, metavar='GFF',
+                        help="GFF file(s) for gene2/region2 (gene annotation, TE annotation, etc.)")
 
     # Legacy aliases (hidden, for backward compatibility)
+    parser.add_argument("-g", "--genome", nargs='+', help=argparse.SUPPRESS)
+    parser.add_argument("--gff", nargs='+', help=argparse.SUPPRESS)
+    parser.add_argument("--te", nargs='*', default=None, help=argparse.SUPPRESS)
     parser.add_argument("--fasta", help=argparse.SUPPRESS)
     parser.add_argument("--te_gff", help=argparse.SUPPRESS)
     parser.add_argument("--gff1", help=argparse.SUPPRESS)
