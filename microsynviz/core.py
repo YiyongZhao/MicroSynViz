@@ -715,7 +715,7 @@ def generate_svg(gene1, gene2, len1, len2, blast_hits,
                  core_ranges=None, revcomp2=False):
     """
     Generate SVG visualization of synteny.
-    Returns path to the generated SVG file.
+    Returns the SVG content as a string.
     """
     global scale, args
 
@@ -1403,11 +1403,7 @@ def generate_svg(gene1, gene2, len1, len2, blast_hits,
     svg_content += ''.join(svg_content_parts)
     svg_content += '</svg>'
 
-    svg_file = f"{out_prefix}_linkview.svg"
-    with open(svg_file, 'w') as f:
-        f.write(svg_content)
-
-    return svg_file
+    return svg_content
 
 # -------------------------- Main Function --------------------------
 def main():
@@ -1468,17 +1464,14 @@ def main():
                              'will be reversed and BLAST will be re-run. Default: off (keep original orientation).')
 
     # SVG appearance (remaining parameters)
-    parser.add_argument('--svg_space', default=0.2, type=float, help="Fraction of width used as left/right margins (default: 0.2)")
     parser.add_argument('--label_font_size', default=18, type=int, help="Font size for scale bar (default: 18)")
     parser.add_argument('--chro_axis', action="store_true", help="Draw tick marks on chromosomes")
     parser.add_argument('--no_scale', action="store_true", help="Omit scale bar")
-    parser.add_argument('--pos_label_x_offset', type=float, default=170, help="X offset for position labels (default: 170)")
     parser.add_argument('--ribbon_opacity', default=0.1, type=float, help="Opacity of BLAST homology ribbons. 0=invisible, 1=opaque (default: 0.1)")
     parser.add_argument('--bezier', action="store_true", help="Use Bezier curves for hit polygons")
 
-    # TE track options (remaining)
-    parser.add_argument('--te_offset_base', type=float, default=15, help="Base offset for TE motif labels (default: 15)")
-    parser.add_argument('--te_offset_step', type=float, default=15, help="Step increment to avoid overlapping TE labels (default: 15)")
+    # SVG output control
+    parser.add_argument('--SVG_plot', action='store_true', help="Generate SVG file (by default only PDF is produced)")
 
     # Output
     parser.add_argument("--output", default="MicroSynViz_result", help="Output file prefix. Generates {prefix}_linkview.svg, {prefix}_linkview.pdf, {prefix}_genes.fasta, {prefix}_blast.txt (default: MicroSynViz_result)")
@@ -1506,6 +1499,14 @@ def main():
         args.te_track_height = 12
     if not hasattr(args, 'te_track_offset'):
         args.te_track_offset = 30
+    if not hasattr(args, 'svg_space'):
+        args.svg_space = 0.2
+    if not hasattr(args, 'pos_label_x_offset'):
+        args.pos_label_x_offset = 170
+    if not hasattr(args, 'te_offset_base'):
+        args.te_offset_base = 15
+    if not hasattr(args, 'te_offset_step'):
+        args.te_offset_step = 15
 
     # Reset global state (safety for repeated calls / testing)
     global gene_info, mRNA_info, te_info
@@ -1777,7 +1778,7 @@ def main():
     len2 = seq_lengths[gene2_display]
 
     log("[Step 4/4] Generating SVG plot...\n")
-    svg_file = generate_svg(
+    svg_content = generate_svg(
         gene1=gene1_display, gene2=gene2_display,
         len1=len1, len2=len2,
         blast_hits=blast_hits,
@@ -1791,10 +1792,17 @@ def main():
         revcomp2=revcomp2
     )
 
-    # Convert SVG to PDF using cairosvg
-    pdf_file = svg_file.replace('.svg', '.pdf')
+    # Write SVG file only if requested
+    svg_file = f"{args.output}_linkview.svg"
+    if args.SVG_plot:
+        with open(svg_file, 'w', encoding='utf-8') as f:
+            f.write(svg_content)
+        log(f"[INFO] SVG file generated: {svg_file}\n")
+
+    # Convert SVG to PDF using cairosvg (always produce PDF)
+    pdf_file = f"{args.output}_linkview.pdf"
     try:
-        cairosvg.svg2pdf(url=svg_file, write_to=pdf_file)
+        cairosvg.svg2pdf(bytestring=svg_content.encode('utf-8'), write_to=pdf_file)
         log(f"[INFO] PDF generated: {pdf_file}\n")
     except Exception as e:
         sys.stderr.write(f"[WARNING] Failed to convert SVG to PDF: {e}\n")
@@ -1802,8 +1810,9 @@ def main():
     log("\n[✅ Analysis Completed Successfully]\n")
     log(f"1. Gene sequences: {seq_fasta}\n")
     log(f"2. BLAST results: {blast_out}\n")
-    log(f"3. Output SVG: {svg_file}\n")
-    log(f"4. Output PDF: {pdf_file}\n")
+    log(f"3. Output PDF: {pdf_file}\n")
+    if args.SVG_plot:
+        log(f"4. Output SVG: {svg_file}\n")
 
 if __name__ == "__main__":
     try:
