@@ -281,8 +281,6 @@ Run `MicroSynViz --help` to see all options.
 |-----------|------|---------|-------------|
 | `--bezier` | flag | — | Use Bezier curves for smooth homology ribbons |
 | `--ribbon_opacity` | float | 0.2 | Opacity of BLAST ribbons (0=invisible, 1=opaque) |
-| `--svg_width` | float | 2000 | SVG canvas width in virtual units |
-| `--svg_height` | float | 800 | SVG canvas height in virtual units |
 | `--chro_axis` | flag | — | Draw tick marks on chromosome bars |
 | `--no_scale` | flag | — | Omit the scale bar |
 | `--output` | str | MicroSynViz_result | Output file prefix |
