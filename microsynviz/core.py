@@ -1393,42 +1393,33 @@ Contact: yiyong.zhao@yale.edu
 def main():
     global args, scale
 
-    # Print banner on --version, --help, or no arguments
-    if '--version' in sys.argv:
-        print(LOGO)
-        print(f"MicroSynViz {__version__}")
-        return
-    if len(sys.argv) == 1 or '--help' in sys.argv or '-h' in sys.argv:
-        print(LOGO)
+    full_description = LOGO.strip()
 
     parser = argparse.ArgumentParser(
-        description="MicroSynViz: Visualize Pairwise Genomic Microsynteny",
-        epilog="For detailed documentation, see https://github.com/YiyongZhao/MicroSynViz"
+        description=full_description,
+        epilog="For detailed documentation, see https://github.com/YiyongZhao/MicroSynViz",
+        formatter_class=argparse.RawTextHelpFormatter
     )
-    # Target: gene IDs or genomic regions
-    parser.add_argument("--gene1", help="Gene ID for region 1. Searched in --annos1 files (GFF/GTF/BED); falls back to FASTA header match if not found or no annotations provided")
-    parser.add_argument("--gene2", help="Gene ID for region 2. Searched in --annos2 files; falls back to FASTA header match")
-    parser.add_argument("--region1", help="Region 1 in SeqID:start-end format. "
-                        "For genome FASTA: Chr1:1000-5000; for CDS FASTA: LOC_Os06g50440:1-1000")
-    parser.add_argument("--region2", help="Region 2 in SeqID:start-end format. "
-                        "For genome FASTA: Chr2:3000-8000; for CDS FASTA: AT1G01010:1-2000")
-    parser.add_argument("--extend", type=int, default=3000, help="Bases to extend around genes/regions (default: 3000). Use 0 for CDS/transcript FASTA")
 
-    # Per-region input files
-    parser.add_argument("--fa1", default=None, metavar='FASTA',
-                        help="FASTA file for region 1. Accepts genome (chromosome-level) or CDS/transcript (gene-level) FASTA. Auto-indexed if .fai missing. Takes priority over legacy flags.")
-    parser.add_argument("--g1", default=None, metavar='FASTA',
-                        help=argparse.SUPPRESS)  # Legacy alias for --fa1
-    parser.add_argument("--g2", default=None, metavar='FASTA',
-                        help=argparse.SUPPRESS)  # Legacy alias for --fa2
-    parser.add_argument("--fa2", default=None, metavar='FASTA',
-                        help="FASTA file for region 2. Accepts genome or CDS/transcript FASTA. Auto-indexed if .fai missing.")
-    parser.add_argument("--annos1", nargs='+', default=None, metavar='FILE',
-                        help="Annotation file(s) for region 1 (GFF3, GTF, or BED format). Multiple files accepted: first file renders closest to chromosome bar, subsequent files layer outward. Optional for CDS/transcript FASTA.")
-    parser.add_argument("--annos2", nargs='+', default=None, metavar='FILE',
-                        help="Annotation file(s) for region 2 (GFF3, GTF, or BED format). Multiple files accepted, layered outward by order. Optional for CDS/transcript FASTA.")
+    # ── Input ──
+    input_group = parser.add_argument_group("Input")
+    input_group.add_argument("--gene1", help="Gene ID for region 1 (searched in --annos1; falls back to FASTA header)")
+    input_group.add_argument("--gene2", help="Gene ID for region 2 (searched in --annos2; falls back to FASTA header)")
+    input_group.add_argument("--region1", help="Region 1 in SeqID:start-end format (e.g. Chr1:1000-5000)")
+    input_group.add_argument("--region2", help="Region 2 in SeqID:start-end format (e.g. Chr2:3000-8000)")
+    input_group.add_argument("--fa1", default=None, metavar='FASTA',
+                        help="FASTA for region 1 (genome or CDS/transcript). Auto-indexed if .fai missing")
+    input_group.add_argument("--fa2", default=None, metavar='FASTA',
+                        help="FASTA for region 2 (genome or CDS/transcript). Auto-indexed if .fai missing")
+    input_group.add_argument("--annos1", nargs='+', default=None, metavar='FILE',
+                        help="Annotation(s) for region 1 (GFF3/GTF/BED). Multiple files layered outward. Optional for CDS FASTA")
+    input_group.add_argument("--annos2", nargs='+', default=None, metavar='FILE',
+                        help="Annotation(s) for region 2 (GFF3/GTF/BED). Multiple files layered outward. Optional for CDS FASTA")
+    input_group.add_argument("--extend", type=int, default=3000, help="Flanking bp to extend (default: 3000). Use 0 for CDS FASTA")
 
-    # Legacy aliases (hidden, for backward compatibility)
+    # Legacy aliases (hidden)
+    parser.add_argument("--g1", default=None, metavar='FASTA', help=argparse.SUPPRESS)
+    parser.add_argument("--g2", default=None, metavar='FASTA', help=argparse.SUPPRESS)
     parser.add_argument("--gffs1", nargs='+', help=argparse.SUPPRESS)
     parser.add_argument("--gffs2", nargs='+', help=argparse.SUPPRESS)
     parser.add_argument("-g", "--genome", nargs='+', help=argparse.SUPPRESS)
@@ -1443,38 +1434,37 @@ def main():
     parser.add_argument("--te_gff1", help=argparse.SUPPRESS)
     parser.add_argument("--te_gff2", help=argparse.SUPPRESS)
 
-    # BLAST options
-    parser.add_argument("--evalue", type=float, default=1e-5, help="BLAST e-value threshold (default: 1e-5)")
-    parser.add_argument("--identity", type=float, default=50, help="Minimum BLAST identity %% to display (default: 50)")
-    parser.add_argument("--alignment_length", type=int, default=5, help="Minimum alignment length in bp to display (default: 5)")
-    parser.add_argument("--color_by", choices=["bitscore", "identity", "evalue"], default="bitscore",
-                        help="Metric for ribbon color gradient: bitscore (default), identity, or evalue")
-    parser.add_argument("--threads", type=int, default=8, help="Number of threads for BLAST (default: 8)")
-    parser.add_argument("--blast_result", metavar="FILE", help="Pre-computed BLAST result in tabular format (outfmt 6: qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore). If provided, skips automatic BLAST.")
-    parser.add_argument("--auto_complementary", action='store_true',
-                        help='Enable automatic reverse complement based on BLAST alignment direction. '
-                             'When enabled, if most BLAST hits are reverse complementary, the second sequence '
-                             'will be reversed and BLAST will be re-run. Default: off (keep original orientation).')
+    # ── BLAST ──
+    blast_group = parser.add_argument_group("BLAST")
+    blast_group.add_argument("--evalue", type=float, default=1e-5, help="E-value threshold (default: 1e-5)")
+    blast_group.add_argument("--identity", type=float, default=50, help="Minimum identity %% (default: 50)")
+    blast_group.add_argument("--alignment_length", type=int, default=5, help="Minimum alignment length in bp (default: 5)")
+    blast_group.add_argument("--color_by", choices=["bitscore", "identity", "evalue"], default="bitscore",
+                        help="Ribbon color metric (default: bitscore)")
+    blast_group.add_argument("--threads", type=int, default=8, help="BLAST threads (default: 8)")
+    blast_group.add_argument("--blast_result", metavar="FILE",
+                        help="Pre-computed BLAST tabular result (outfmt 6). Skips auto-BLAST")
+    blast_group.add_argument("--auto_complementary", action='store_true',
+                        help="Auto-detect and reverse complement based on BLAST orientation")
 
-    # SVG appearance (remaining parameters)
-    parser.add_argument('--label_font_size', default=18, type=int, help="Font size for scale bar (default: 18)")
-    parser.add_argument('--chro_axis', action="store_true", help="Draw tick marks on chromosomes")
-    parser.add_argument('--no_scale', action="store_true", help="Omit scale bar")
-    parser.add_argument('--ribbon_opacity', default=0.1, type=float, help="Opacity of BLAST homology ribbons. 0=invisible, 1=opaque (default: 0.1)")
-    parser.add_argument('--bezier', action="store_true", help="Use Bezier curves for hit polygons")
+    # ── Appearance ──
+    appearance_group = parser.add_argument_group("Appearance")
+    appearance_group.add_argument('--bezier', action="store_true", help="Use Bezier curves for homology ribbons")
+    appearance_group.add_argument('--ribbon_opacity', default=0.1, type=float,
+                        help="Ribbon opacity, 0-1 (default: 0.1)")
+    appearance_group.add_argument('--label_font_size', default=18, type=int, help="Scale bar font size (default: 18)")
+    appearance_group.add_argument('--chro_axis', action="store_true", help="Draw tick marks on chromosomes")
+    appearance_group.add_argument('--no_scale', action="store_true", help="Omit scale bar")
 
-    # SVG output control
-    parser.add_argument('--SVG_plot', action='store_true', help="Generate SVG file (by default only PDF is produced)")
-
-    # Output
-    parser.add_argument("--output", default="MicroSynViz_result", help="Output file prefix. Generates {prefix}_linkview.svg, {prefix}_linkview.pdf, {prefix}_genes.fasta, {prefix}_blast.txt (default: MicroSynViz_result)")
-
-    # Verbosity
-    parser.add_argument('--quiet', '-q', action='store_true',
-                        help="Suppress informational output (only show warnings and errors)")
-
-    # Version
-    parser.add_argument('--version', action='version', version=f'MicroSynViz {__version__}')
+    # ── Output ──
+    output_group = parser.add_argument_group("Output")
+    output_group.add_argument("--output", default="MicroSynViz_result",
+                        help="Output prefix (default: MicroSynViz_result)")
+    output_group.add_argument('--SVG_plot', action='store_true',
+                        help="Also generate SVG file (default: PDF only)")
+    output_group.add_argument('--quiet', '-q', action='store_true',
+                        help="Suppress info messages (warnings/errors only)")
+    output_group.add_argument('--version', action='version', version=f'MicroSynViz {__version__}')
 
     args = parser.parse_args()
     scale = 1.0
